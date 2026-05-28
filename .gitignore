@@ -1,0 +1,7 @@
+config.json
+*.pdf
+*.jpeg
+*.jpg
+*.png
+start.command
+/tmp

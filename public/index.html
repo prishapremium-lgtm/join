@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>פרישה פרימיום – הצטרפות לקוח</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <header class="app-header">
+    <div class="header-inner">
+      <img src="logo.jpg" alt="פרישה פרימיום" class="header-logo" />
+    </div>
+  </header>
+
+  <div class="progress-bar-wrapper">
+    <div class="progress-bar">
+      <div class="progress-step active" id="step-indicator-1">
+        <div class="step-circle">1</div>
+        <div class="step-label">פרטים אישיים</div>
+      </div>
+      <div class="progress-line" id="line-1-2"></div>
+      <div class="progress-step" id="step-indicator-2">
+        <div class="step-circle">2</div>
+        <div class="step-label">מסמכים וחתימה</div>
+      </div>
+      <div class="progress-line" id="line-2-3"></div>
+      <div class="progress-step" id="step-indicator-3">
+        <div class="step-circle">3</div>
+        <div class="step-label">אישור</div>
+      </div>
+    </div>
+  </div>
+
+  <main class="main-content">
+
+    <!-- ══ STEP 0 – Intro ══════════════════════════════════ -->
+    <div class="step-card" id="step-0">
+      <div class="card-header">
+        <h2>ברוכים הבאים לפרישה פרימיום</h2>
+        <p>תהליך הצטרפות פשוט, מהיר ומאובטח</p>
+      </div>
+      <div class="intro-body">
+
+        <div class="intro-section">
+          <h3 class="intro-heading">על ייפויי הכח שתחתמו עליהם</h3>
+          <ul class="intro-bullets">
+            <li><span class="bullet-icon">🔍</span><span>משמשים לקבלת מידע בלבד – מגופים פנסיוניים וחברות ביטוח</span></li>
+            <li><span class="bullet-icon">🚫</span><span>אינם מאפשרים ביצוע כל פעולה בחשבונות, בקרנות הפנסיה או בפוליסות הביטוח</span></li>
+            <li><span class="bullet-icon">⏱️</span><span>תוקפם מוגבל בזמן בהתאם לקבוע בכל מסמך</span></li>
+            <li><span class="bullet-icon">📊</span><span>המידע שיתקבל ישמש לבניית תמונה מלאה של מצבך הפנסיוני והביטוחי</span></li>
+          </ul>
+        </div>
+
+        <div class="intro-section">
+          <h3 class="intro-heading">
+            העלאת תעודת זהות
+            <span class="intro-optional">אופציונלי</span>
+          </h3>
+          <p class="intro-subtitle">העלאת ת.ז (כולל ספח) תאפשר מילוי אוטומטי של הפרטים במסך הבא</p>
+          <div class="id-upload-zone">
+            <input type="file" id="id-file-input"   accept="image/*"                    class="hidden" />
+            <input type="file" id="id-camera-input" accept="image/*" capture="environment" class="hidden" />
+            <div class="id-upload-buttons" id="id-upload-buttons">
+              <button type="button" class="btn btn-ghost" id="upload-gallery-btn">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                בחר מהגלריה
+              </button>
+              <button type="button" class="btn btn-ghost" id="upload-camera-btn">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                צלם עכשיו
+              </button>
+            </div>
+            <div id="id-preview-wrapper" class="hidden">
+              <img id="id-preview" alt="תצוגת ת.ז" />
+              <button type="button" class="btn btn-ghost btn-small" id="remove-id-btn">✕ הסר תמונה</button>
+            </div>
+            <div id="ocr-status" class="hidden"></div>
+          </div>
+        </div>
+
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-primary btn-large" id="intro-continue-btn">
+          המשך למילוי פרטים
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- ══ STEP 1 ══════════════════════════════════════════ -->
+    <div class="step-card hidden" id="step-1">
+      <div class="card-header">
+        <h2>ברוכים הבאים!</h2>
+        <p>מלאו את הפרטים האישיים שלכם כדי להמשיך</p>
+      </div>
+      <form id="personal-form" novalidate>
+        <div class="form-grid">
+
+          <div class="form-group">
+            <label for="firstName">שם פרטי <span class="required">*</span></label>
+            <input type="text" id="firstName" placeholder="ישראל" autocomplete="given-name" />
+            <span class="field-error"></span>
+          </div>
+          <div class="form-group">
+            <label for="lastName">שם משפחה <span class="required">*</span></label>
+            <input type="text" id="lastName" placeholder="ישראלי" autocomplete="family-name" />
+            <span class="field-error"></span>
+          </div>
+          <div class="form-group">
+            <label for="idNumber">מספר תעודת זהות <span class="required">*</span></label>
+            <input type="text" id="idNumber" placeholder="9 ספרות" maxlength="9" inputmode="numeric" />
+            <span class="field-error"></span>
+          </div>
+          <div class="form-group">
+            <label for="birthDate">תאריך לידה <span class="required">*</span></label>
+            <input type="date" id="birthDate" dir="ltr" />
+            <span class="field-error"></span>
+          </div>
+          <div class="form-group">
+            <label for="idIssueDate">תאריך הנפקת ת.ז</label>
+            <input type="date" id="idIssueDate" dir="ltr" />
+            <span class="field-error"></span>
+          </div>
+          <div class="form-group">
+            <label for="phone">טלפון נייד <span class="required">*</span></label>
+            <input type="tel" id="phone" placeholder="05X-XXXXXXX" autocomplete="tel" />
+            <span class="field-error"></span>
+          </div>
+          <div class="form-group form-full">
+            <label for="email">כתובת אימייל <span class="required">*</span></label>
+            <input type="email" id="email" placeholder="example@email.com" autocomplete="email" />
+            <span class="field-error"></span>
+          </div>
+          <div class="form-group form-full">
+            <label for="address">כתובת מגורים</label>
+            <input type="text" id="address" placeholder="רחוב, מספר בית, עיר" autocomplete="street-address" />
+            <span class="field-error"></span>
+          </div>
+
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary btn-large">
+            המשך לחתימת מסמכים
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <!-- ══ STEP 2 ══════════════════════════════════════════ -->
+    <div class="step-card hidden" id="step-2">
+      <div class="card-header">
+        <h2>מסמכי הצטרפות – קריאה וחתימה</h2>
+        <p>עיינו בכל המסמכים ולאחר מכן חתמו בתחתית הדף</p>
+      </div>
+
+      <!-- Document tabs -->
+      <div class="doc-tabs">
+        <button class="doc-tab active" data-tab="0">הסכמת לקוח</button>
+        <button class="doc-tab" data-tab="1">ייפוי כח פנסיוני</button>
+        <button class="doc-tab" data-tab="2">ייפוי כח ביטוח</button>
+        <button class="doc-tab" data-tab="3">הר הביטוח</button>
+      </div>
+
+      <!-- ── Document 1: הסכמת לקוח ── -->
+      <div class="doc-panel active" id="doc-panel-0">
+        <div class="pdf-doc" id="doc-0-content">
+          <div style="text-align:center; margin-bottom:14px;">
+            <img src="logo.jpg" alt="פרישה פרימיום" style="height:60px; width:auto; object-fit:contain; display:block; margin:0 auto 12px;" />
+          </div>
+          <div class="pdf-title-large">הסכמה לשימוש במידע ולקבלת דבר פרסומת</div>
+          <div class="pdf-body">
+            <p>אני מסכים/מסכימה, מעבר למתחייב על פי דין או הסכם, כי מידע זה ויתר המידע אודותיי, המצוי או שיהיה מצוי בידי <strong>אמיר לוי / פרישה פרימיום</strong> וחברות בנות ו/או חברות קשורות שמשרתות את הקבוצה, ישמש את החברות בנות ו/או חברות קשורות ואמיר לוי / פרישה פרימיום לשם יצירת קשר, ואמיר לוי / פרישה פרימיום להביא לידיעתי מידע על מוצרים ושירותים, לרבות כדי לאפשר לחברות כאמור להציע לי הצעות שיווקיות מותאמות אישית.</p>
+            <p>ולשלוח דברי פרסומת בין היתר באמצעות פקס, דואר אלקטרוני, מערכת חיוג אוטומטי או הודעת מסר קצר (SMS), וכן לצורך טיפול בתביעות, עיבודו ואחסונו של המידע, וכן לשימושים נוספים הנגזרים משימושים האמורים לעיל ונדרשים לשם השלמתם, זאת אף באמצעות העברתו לצדדים שלישיים הפועלים בשמה של אמיר לוי / פרישה פרימיום.</p>
+            <p>בכל עת בעתיד תוכל להודיע על סירובך לקבל הצעות שיווקיות ודברי פרסומת כאמור באמצעות "טופס סירוב קבלת דבר פרסומת" העומד לרשותך באתר האינטרנט של החברה בכתובת <strong>www.prishap.co.il</strong>, בפנייה בכתב לחברה: לזרוב 33, ראשון לציון 7565435, או באמצעות פניה טלפונית למספר <strong>074-7494494</strong>.</p>
+          </div>
+          <div class="pdf-sig-row" style="margin-top:16px; border-top:1px solid #555; padding-top:14px;">
+            <div class="pdf-sig-col">
+              <div class="pdf-sig-content">
+                <span id="d0-date" style="font-size:13px; font-weight:600;">-</span>
+              </div>
+              <div class="pdf-sig-line"></div>
+              <div class="pdf-sig-label">תאריך</div>
+            </div>
+            <div class="pdf-sig-col">
+              <div class="pdf-sig-content">
+                <span id="d0-name" style="font-size:13px; font-weight:600;">-</span>
+              </div>
+              <div class="pdf-sig-line"></div>
+              <div class="pdf-sig-label">שם הלקוח</div>
+            </div>
+            <div class="pdf-sig-col">
+              <div class="pdf-sig-content">
+                <span class="sig-placeholder"></span>
+              </div>
+              <div class="pdf-sig-line"></div>
+              <div class="pdf-sig-label">חתימת הלקוח</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Document 2: ייפוי כח פנסיוני ── -->
+      <div class="doc-panel hidden" id="doc-panel-1">
+        <div class="pdf-doc pdf-doc-compact" id="doc-1-content">
+
+          <div style="text-align:right; font-size:9px; margin-bottom:3px;">לכל מאן דבעי,</div>
+          <div class="pdf-title-large">הרשאה חד פעמית לסוכן / יועץ פנסיוני לקבלת מידע (נספח א)</div>
+
+          <!-- מייפה הכוח -->
+          <div style="border:1px solid #555; padding:5px 8px; margin-bottom:6px;">
+            <div style="font-weight:700; font-size:10.5px; margin-bottom:4px;">מייפה הכוח (הלקוח):</div>
+            <div style="display:flex; gap:12px; align-items:baseline; margin-bottom:3px; flex-wrap:wrap;">
+              <div class="pdf-data-row" style="flex:1; min-width:160px;">
+                <span class="pdf-data-label">שם:</span>
+                <span class="pdf-data-value" id="d1-name">-</span>
+              </div>
+              <div style="display:flex; align-items:center; gap:4px; white-space:nowrap;">
+                <span class="pdf-data-label">מספר זיהוי:</span>
+                <span id="d1-id" class="pdf-license-box"></span>
+              </div>
+            </div>
+            <div class="pdf-data-row">
+              <span class="pdf-data-label">כתובת:</span>
+              <span class="pdf-data-value" id="d1-address">-</span>
+            </div>
+          </div>
+
+          <!-- מיופה הכוח -->
+          <div style="margin-bottom:6px;">
+            <div style="font-weight:700; font-size:10.5px; margin-bottom:4px;">מיופה הכוח (סוכן/ יועץ פנסיוני, במקרה של סוכן / יועץ פנסיוני שהוא תאגיד מיופה הכוח הינו התאגיד):</div>
+            <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:3px; font-size:10.5px;">
+              <span class="pdf-data-label">שם (יחיד / תאגיד):</span>
+              <strong>אמיר לוי / פרישה פרימיום</strong>
+              <span class="pdf-data-label" style="margin-right:6px;">רישיון מס':</span>
+              <span class="pdf-license-box"><span class="pdf-license-digit">0</span><span class="pdf-license-digit">3</span><span class="pdf-license-digit">6</span><span class="pdf-license-digit">4</span><span class="pdf-license-digit">0</span><span class="pdf-license-digit">4</span><span class="pdf-license-digit">0</span><span class="pdf-license-digit">5</span><span class="pdf-license-digit">1</span></span>
+            </div>
+            <div style="font-size:10.5px; margin-bottom:3px; line-height:1.5;">
+              אשר הינו: 1( יועץ פנסיוני <span style="border:1px solid #555;display:inline-block;width:11px;height:11px;vertical-align:middle;"></span> ; 2( סוכן ביטוח פנסיוני <span style="border:1px solid #555;display:inline-block;width:11px;height:11px;vertical-align:middle;text-align:center;line-height:11px;font-size:9px;">✔</span> ; 3( סוכן שיווק פנסיוני <span style="border:1px solid #555;display:inline-block;width:11px;height:11px;vertical-align:middle;"></span> <em style="font-size:9.5px;">סמן את האפשרות המתאימה.</em>
+            </div>
+            <div style="font-size:10.5px;">
+              <span class="pdf-data-label">טלפון:</span> 054-8333160
+              &nbsp;&nbsp;&nbsp;
+              <span class="pdf-data-label">דוא"ל:</span> AmirL@prishap.co.il
+            </div>
+          </div>
+
+          <div class="pdf-body">
+            <p>אני, הח"מ, מייפה את כוחו של הסוכן / היועץ הפנסיוני, או מי מטעמו,<sup>1</sup> לפנות בשמי לכל גוף מוסדי<sup>2</sup> לשם קבלת מידע<sup>3</sup> אודות מוצרים פנסיוניים<sup>4</sup> ותכניות ביטוח<sup>5</sup> לשם מתן ייעוץ פנסיוני או שיווק פנסיוני באופן חד-פעמי או לשם מתן ייעוץ פנסיוני או שיווק פנסיוני לראשונה, כהכנה למתן ייעוץ פנסיוני או שיווק פנסיוני מתמשך. העברת מידע אודותיי, כאמור לעיל, יכול שתיעשה באמצעות מערכת סליקה פנסיונית.</p>
+            <p>ייפוי כוח זה מתייחס לכל המוצרים הפנסיוניים המנוהלים עבורי בגוף מוסדי כלשהו נכון למועד חתימת הרשאה זו, מלבד המוצרים המנויים בטופס המצורף להרשאה זו (עבור כל גוף מוסדי בנפרד).</p>
+          </div>
+
+          <p class="pdf-notice"><strong>שים לב! אם לא יצוינו מוצרים פנסיוניים בטופס המצ"ב, ההרשאה תתייחס לכל המוצרים הפנסיוניים ותוכניות הביטוח שברשותך.</strong></p>
+          <p class="pdf-notice"><strong>הרשאה זו תעמוד בתוקפה במשך 3 חודשים מיום חתימתה ולראיה באתי על החתום:</strong></p>
+
+          <div class="pdf-sig-row">
+            <div class="pdf-sig-col">
+              <div class="pdf-sig-content"><span class="sig-placeholder"></span></div>
+              <div class="pdf-sig-line"></div>
+              <div class="pdf-sig-label">חתימת הלקוח</div>
+            </div>
+            <div class="pdf-sig-col">
+              <div class="pdf-sig-content"><span id="d1-date" style="font-size:10px;font-weight:600;">-</span></div>
+              <div class="pdf-sig-line"></div>
+              <div class="pdf-sig-label">תאריך החתימה</div>
+            </div>
+          </div>
+
+          <div class="pdf-footnotes">
+            <p>.1 מי מטעמו - עובד הקשור לעבודתו של בעל הרישיון, הפונה בשמו לגוף המוסדי. פניה כאמור באמצעות מערכת סליקה פנסיונית מרכזית תעשה בכפוף לתקנות בפיקוח על שירותים פיננסיים (ייעוץ שיווק ומערכת סליקה פנסיוניים) (אבטחת מידע במערכת סליקה פנסיונית מרכזית), התשע"ב- 2012.</p>
+            <p>.2 גוף מוסדי - כל אחד מאלה: חברת ביטוח או חברה מנהלת של קופת גמל, של קרן השתלמות או של קרן פנסיה.</p>
+            <p>.3 מידע - לרבות פרטי הגוף המוסדי המנהל את המוצר, סוג המוצר הפנסיוני, פרטי החשבון שלי במוצר, מסלולי השקעה, מסלול ביטוחי, דמי ניהול, שיעור תשואה, פרטי מעסיק, פרטי שכר, הפקדות ויתרות כספיות, פרטי מוטבים, מידע על קיום חריגים, נתוני שעבודים ועיקולים, הלוואות ותביעות ומידע רפואי ככל שנדרש.</p>
+            <p>.4 מוצר פנסיוני - מוצר פנסיוני כהגדרתו בסעיף 1 לחוק הייעוץ הפנסיוני ותכנית ביטוח הכלולה במוצר פנסיוני כהגדרתה בסעיף 31ט(ז)(2) לחוק הייעוץ הפנסיוני.</p>
+            <p>.5 תכנית ביטוח - תכנית ביטוח מפני סיכון מוות (לרבות אם הוא נלווה לביטוח משכנתא) או מפני סיכון אובדן כושר עבודה.</p>
+          </div>
+
+          <hr class="pdf-separator" />
+
+          <!-- נספח רשות -->
+          <div class="pdf-subtitle">נספח להרשאה חד פעמית לסוכן / יועץ פנסיוני לקבלת מידע (רשות)</div>
+
+          <div style="display:flex; align-items:baseline; gap:6px; margin-bottom:4px; font-size:10.5px;">
+            <span style="font-weight:700; white-space:nowrap;">לכבוד:</span>
+            <span style="border-bottom:1px solid #555; flex:1;">&nbsp;&nbsp;(שם הגוף המוסדי), (מספר ח.פ)</span>
+          </div>
+
+          <p style="font-weight:700; font-size:10.5px; margin-bottom:4px;">הנדון: רשימת מוצרים פנסיוניים ותכניות ביטוח מוחרגים</p>
+
+          <div style="display:flex; gap:12px; align-items:baseline; margin-bottom:5px; flex-wrap:wrap;">
+            <div class="pdf-data-row" style="flex:1; min-width:150px;">
+              <span class="pdf-data-label">שם:</span>
+              <span class="pdf-data-value" id="d1-name2">-</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:4px; white-space:nowrap;">
+              <span class="pdf-data-label">מספר זיהוי:</span>
+              <span id="d1-id2" class="pdf-license-box"></span>
+            </div>
+          </div>
+
+          <p style="font-size:10.5px; margin-bottom:4px;">להלן פירוט המוצרים הפנסיוניים ומוצרי הביטוח המוחרגים מייפוי הכוח:</p>
+
+          <table class="pdf-table">
+            <thead>
+              <tr>
+                <th>(1) מספר חשבון הלקוח במוצר</th>
+                <th>(2) מספר הקידוד של המוצר (רשות)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>&nbsp;</td><td>&nbsp;</td></tr>
+              <tr><td>&nbsp;</td><td>&nbsp;</td></tr>
+              <tr><td>&nbsp;</td><td>&nbsp;</td></tr>
+              <tr><td>&nbsp;</td><td>&nbsp;</td></tr>
+            </tbody>
+          </table>
+
+          <span class="pdf-small">* החרגה של מוצר פנסיוני תתייחס לכל מסלולי ההשקעה והכיסויים הביטוחיים הכלולים בו.</span>
+          <span class="pdf-small">* אם מועבר "מספר הקידוד של המוצר" יש להעבירו בהתאם להוראות חוזר "מבנה אחיד להעברת מידע ונתונים בשוק החיסכון הפנסיוני".</span>
+
+          <p style="font-weight:700; margin-top:6px; font-size:10.5px;">ולראיה באתי על החתום:</p>
+
+          <div class="pdf-sig-row">
+            <div class="pdf-sig-col">
+              <div class="pdf-sig-content"><span class="sig-placeholder"></span></div>
+              <div class="pdf-sig-line"></div>
+              <div class="pdf-sig-label">חתימת הלקוח</div>
+            </div>
+            <div class="pdf-sig-col">
+              <div class="pdf-sig-content"><span id="d1-date2" style="font-size:10px;font-weight:600;">-</span></div>
+              <div class="pdf-sig-line"></div>
+              <div class="pdf-sig-label">תאריך החתימה</div>
+            </div>
+          </div>
+
+          <span class="pdf-small" style="margin-top:6px;">נספח זה יועבר לכל גוף מוסדי אליו פונה הסוכן/ היועץ הפנסיוני. אם הלקוח לא ביקש להחריג מייפוי הכוח מוצר פנסיוני או מוצר ביטוח בגוף מוסדי, ישלח הנספח לאותו גוף מוסדי כשהוא ריק.</span>
+
+        </div>
+      </div>
+
+      <!-- ── Document 3: ייפוי כח ביטוחים פרטיים ── -->
+      <div class="doc-panel hidden" id="doc-panel-2">
+        <div class="pdf-doc" id="doc-2-content">
+
+          <div style="text-align:right; margin-bottom:10px;">
+            <span class="pdf-annex-tag">נספח ב'</span>
+          </div>
+
+          <div class="pdf-title-large">ייפוי כוח מאת המועמד לביטוח</div>
+
+          <div class="pdf-fill-line">
+            <span style="font-weight:700;">עבור חברת הביטוח</span>
+            <span class="pdf-fill-value">&nbsp;</span>
+          </div>
+
+          <div class="pdf-body">
+            <p>
+              אני (שם מלא)&nbsp;<span style="border-bottom:1px solid #555; min-width:120px; display:inline-block; font-weight:700; padding:0 4px;" id="d2-name">-</span>,&nbsp;
+              ת.ז.&nbsp;<span style="border-bottom:1px solid #555; min-width:100px; display:inline-block; font-weight:700; padding:0 4px;" id="d2-id">-</span>,
+            </p>
+            <p>מייפה את כוחו/ה של חברת הביטוח / סוכן הביטוח <strong>אמיר לוי / פרישה פרימיום</strong> <u>036404051</u></p>
+            <p>לדרוש ולקבל עבורי ועבור בני משפחתי אלה :</p>
+          </div>
+
+          <table class="pdf-table">
+            <thead>
+              <tr>
+                <th>שם מלא</th>
+                <th>מספר תעודת זהות</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>&nbsp;</td><td>&nbsp;</td></tr>
+              <tr><td>&nbsp;</td><td>&nbsp;</td></tr>
+              <tr><td>&nbsp;</td><td>&nbsp;</td></tr>
+              <tr><td>&nbsp;</td><td>&nbsp;</td></tr>
+            </tbody>
+          </table>
+
+          <div class="pdf-fill-line" style="margin-top:12px;">
+            <span style="font-weight:700;">עבור פוליסות שמספרן</span>
+            <span class="pdf-fill-value">&nbsp;</span>
+          </div>
+
+          <hr style="border:0; border-top:1px solid #bbb; margin:14px 0;" />
+
+          <div class="pdf-body">
+            <p>כל מידע הנדרש לו/ה לדעתו/ה לצורך הליך התאמת ביטוח כאמור בסעיף 8(א) לחוזר צירוף לביטוח, לרבות קבלת דף פרטי הביטוח, קבלת העתק מטופס גילוי נאות של הפוליסה המקורית ודוח שנתי אחרון שנשלח אלי.</p>
+          </div>
+
+          <p class="pdf-notice">ייפוי כוח זה יהיה בתוקף 30 ימי עבודה מיום חתימתו.</p>
+
+          <div class="pdf-sig-row" style="margin-top:20px;">
+            <div class="pdf-sig-col">
+              <div class="pdf-sig-content"><span id="d2-date" style="font-size:13px;font-weight:600;">-</span></div>
+              <div class="pdf-sig-line"></div>
+              <div class="pdf-sig-label">תאריך</div>
+            </div>
+            <div class="pdf-sig-col">
+              <div class="pdf-sig-content"><span class="sig-placeholder"></span></div>
+              <div class="pdf-sig-line"></div>
+              <div class="pdf-sig-label">חתימת המועמד לביטוח</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ── Document 4: הר הביטוח ── -->
+      <div class="doc-panel hidden" id="doc-panel-3">
+        <div class="pdf-doc" id="doc-3-content">
+
+          <div class="pdf-subtitle">נספח ה'</div>
+          <div class="pdf-subtitle">הרשאת שימוש פרטנית</div>
+          <div class="pdf-subtitle" style="margin-bottom:20px;">לשימוש באתר הר הביטוח</div>
+
+          <div class="pdf-address-block">
+            <div>לכבוד</div>
+            <div>אמיר לוי</div>
+            <div><strong><u>פרישה פרימיום</u></strong></div>
+          </div>
+
+          <div class="pdf-body">
+            <p>א.ג.נ</p>
+            <p>
+              1. אני החתום מטה, ת.ז.:&nbsp;<span style="border-bottom:1px solid #555; min-width:100px; display:inline-block; font-weight:700; padding:0 4px;" id="d3-id">-</span>,
+            </p>
+            <p>מייפה כוחו/ה של חברת הביטוח / סוכן הביטוח <strong>אמיר לוי / פרישה פרימיום</strong> <u>036404051</u> לבצע חיפוש על שמי ועל שם ילדיי הקטינים באתר הר הביטוח, על פי הנתונים האישיים המצורפים מטה:</p>
+          </div>
+
+          <table class="pdf-table" style="font-size:11px;">
+            <thead>
+              <tr>
+                <th>שם מלא</th>
+                <th>מספר תעודת זהות</th>
+                <th>תאריך הנפקת ת.ז</th>
+                <th>הונפק לי דרכון ב-3 שנים?</th>
+                <th>יצאתי מהארץ ב-3 שנים?</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr id="d3-client-row">
+                <td id="d3-name">-</td>
+                <td id="d3-id2">-</td>
+                <td id="d3-issue">-</td>
+                <td id="d3-passport">-</td>
+                <td id="d3-travel">-</td>
+              </tr>
+              <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+              <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+              <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+            </tbody>
+          </table>
+
+          <p class="pdf-notice pdf-underline" style="margin-top:16px;">2. טופס הרשאה זה יעמוד בתוקף לחמישה ימי עבודה.</p>
+
+          <div class="pdf-sig-row" style="margin-top:20px;">
+            <div class="pdf-sig-col">
+              <div class="pdf-sig-content"><span id="d3-date" style="font-size:13px;font-weight:600;">-</span></div>
+              <div class="pdf-sig-line"></div>
+              <div class="pdf-sig-label">תאריך</div>
+            </div>
+            <div class="pdf-sig-col">
+              <div class="pdf-sig-content"><span class="sig-placeholder"></span></div>
+              <div class="pdf-sig-line"></div>
+              <div class="pdf-sig-label">חתימה</div>
+            </div>
+          </div>
+
+          <p class="pdf-small pdf-underline" style="margin-top:16px; text-align:center;">יש למלא טופס זה בנפרד עבור כל אדם שמעל גיל 18</p>
+
+        </div>
+      </div>
+
+      <!-- ── Signature area ── -->
+      <div class="sig-area-wrapper">
+        <div class="sig-area-header">
+          <div class="sig-area-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+            חתימה דיגיטלית – חלה על כל המסמכים לעיל
+          </div>
+          <button type="button" id="clear-btn" class="btn btn-ghost btn-small">נקה חתימה</button>
+        </div>
+        <div class="canvas-wrapper" id="canvas-wrapper">
+          <canvas id="signature-canvas"></canvas>
+          <div class="canvas-hint" id="canvas-hint">חתמו כאן באצבע או בעכבר</div>
+        </div>
+        <span class="field-error" id="signature-error"></span>
+
+        <label class="consent-check">
+          <input type="checkbox" id="consent-checkbox" />
+          <span>קראתי את כל המסמכים לעיל, הבנתי את תוכנם ואני מסכים/ה לתנאיהם</span>
+        </label>
+        <span class="field-error" id="consent-error"></span>
+      </div>
+
+      <div class="form-actions form-actions-between">
+        <button type="button" id="back-btn" class="btn btn-ghost">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+          חזרה
+        </button>
+        <button type="button" id="submit-btn" class="btn btn-primary btn-large">
+          אשר ושלח מסמכים
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- ══ STEP 3 ══════════════════════════════════════════ -->
+    <div class="step-card hidden" id="step-3">
+      <div class="success-container">
+        <div class="success-icon-wrapper">
+          <svg class="checkmark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 52">
+            <circle class="checkmark__circle" cx="26" cy="26" r="25" fill="none"/>
+            <path class="checkmark__check" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8"/>
+          </svg>
+        </div>
+        <h2>תודה על ההצטרפות!</h2>
+        <p class="success-sub">ברוכים הבאים, <strong id="success-name">-</strong></p>
+
+        <div class="status-timeline">
+          <div class="timeline-item done">
+            <div class="tl-icon">✓</div>
+            <div class="tl-text"><strong>כל המסמכים נחתמו ואושרו</strong><span>4 טפסים הצטרפות הושלמו בהצלחה</span></div>
+          </div>
+          <div class="timeline-item done">
+            <div class="tl-icon">✓</div>
+            <div class="tl-text"><strong>הטפסים החתומים הורדו למחשבך</strong><span>שמור את הקבצים לעיונך</span></div>
+          </div>
+          <div class="timeline-item done" id="tl-email">
+            <div class="tl-icon">✓</div>
+            <div class="tl-text"><strong>אישור נשלח לאימייל שלך</strong><span>בדוק/י את תיבת הדואר הנכנס</span></div>
+          </div>
+          <div class="timeline-item active">
+            <div class="tl-icon">⟳</div>
+            <div class="tl-text">
+              <strong>אנו פונים לגופים הרלוונטיים</strong>
+              <span>בעזרת ייפויי הכח שחתמת, פונים כעת לקרנות פנסיה, קופות גמל, חברות ביטוח ואתר הר הביטוח לקבלת תמונה מלאה</span>
+            </div>
+          </div>
+          <div class="timeline-item">
+            <div class="tl-icon">4</div>
+            <div class="tl-text"><strong>ניתוח וסיכום אישי</strong><span>נחזור אליך עם תוכנית פרישה מותאמת אישית</span></div>
+          </div>
+        </div>
+
+        <div class="info-box">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <span>כל המסמכים החתומים נשמרו ונשלחו. לשאלות פנה/י לאמיר לוי: <strong>054-8333160</strong> | <strong>AmirL@prishap.co.il</strong></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Loading -->
+    <div class="loading-overlay hidden" id="loading-overlay">
+      <div class="spinner-container">
+        <div class="spinner"></div>
+        <p id="loading-msg">מכין את המסמכים...</p>
+        <p class="loading-sub">אנא המתן מספר שניות</p>
+      </div>
+    </div>
+
+  </main>
+
+  <footer class="app-footer">
+    <p>© 2024 פרישה פרימיום | אמיר לוי | רישיון 036404051 | כל המסמכים מאובטחים</p>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.1.7/dist/signature_pad.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
