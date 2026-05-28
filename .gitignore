@@ -1,7 +1,10 @@
 config.json
+.env
+.DS_Store
+.claude/
+start.command
 *.pdf
 *.jpeg
 *.jpg
 *.png
-start.command
 /tmp
