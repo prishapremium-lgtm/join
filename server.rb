@@ -1,5 +1,7 @@
 #!/usr/bin/env ruby
 # encoding: utf-8
+Encoding.default_external = Encoding::UTF_8
+Encoding.default_internal = Encoding::UTF_8
 #
 # פרישה פרימיום – שרת הצטרפות לקוחות
 # Uses only Ruby built-in libraries (WEBrick + net/smtp)
@@ -278,13 +280,11 @@ server.mount('/api', OnboardingServlet)
 
 puts ""
 puts "=" * 52
-puts "  🚀 #{COMPANY} – שרת הצטרפות לקוחות"
+puts "  Server: #{COMPANY.encode('UTF-8', invalid: :replace, undef: :replace)}"
 puts "=" * 52
-puts "  🌐 כתובת:  http://localhost:#{PORT}"
-puts "  📧 מנהל:  #{ADMIN || '⚠️  לא הוגדר'}"
-puts "  📮 SMTP:  #{SMTP_HOST}:#{SMTP_PORT}"
-puts ""
-puts "  ➤  לעצירה: Ctrl+C"
+puts "  Port: #{PORT}"
+puts "  Admin: #{ADMIN}"
+puts "  SMTP: #{SMTP_HOST}:#{SMTP_PORT}"
 puts ""
 
 trap('INT') do
