@@ -118,7 +118,12 @@ def sendgrid_send(to:, subject:, html:, pdf_b64: nil, pdf_name: nil)
   req['Content-Type']  = 'application/json'
   req.body = JSON.generate(body)
 
-  http.request(req)
+  resp = http.request(req)
+  unless resp.code.to_i.between?(200, 299)
+    STDERR.puts "[SendGrid] Error #{resp.code}: #{resp.body}"
+    raise "SendGrid #{resp.code}: #{resp.body}"
+  end
+  resp
 end
 
 def send_emails(client, pdf_bytes)
