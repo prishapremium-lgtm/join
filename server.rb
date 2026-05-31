@@ -19,16 +19,18 @@ require 'uri'
 CONFIG_FILE = File.join(__dir__, 'config.json')
 CFG = File.exist?(CONFIG_FILE) ? JSON.parse(File.read(CONFIG_FILE, encoding: 'utf-8')) : {}
 
-def u(str) = str.to_s.encode('UTF-8', invalid: :replace, undef: :replace)
+def to_utf8(str)
+  str.to_s.encode('UTF-8', invalid: :replace, undef: :replace)
+end
 
-COMPANY       = u(ENV['COMPANY_NAME']  || CFG.fetch('company_name',      'פרישה פרימיום'))
-ANTHROPIC_KEY = u(ENV['ANTHROPIC_KEY'] || CFG.fetch('anthropic_api_key', ''))
-ADMIN         = u(ENV['ADMIN_EMAIL']   || CFG.fetch('admin_email',        ''))
-SMTP_HOST     = u(ENV['SMTP_HOST']     || CFG.fetch('smtp_host',          'smtp.gmail.com'))
-SMTP_PORT     = (ENV['SMTP_PORT']      || CFG.fetch('smtp_port',          587)).to_i
-SMTP_USER     = u(ENV['SMTP_USER']     || CFG.fetch('smtp_user',          ''))
-SMTP_PASS     = u(ENV['SMTP_PASSWORD'] || CFG.fetch('smtp_password',      ''))
-PORT          = (ENV['PORT']           || CFG.fetch('port',               3000)).to_i
+COMPANY       = to_utf8(ENV['COMPANY_NAME']  || CFG.fetch('company_name',      'פרישה פרימיום'))
+ANTHROPIC_KEY = to_utf8(ENV['ANTHROPIC_KEY'] || CFG.fetch('anthropic_api_key', ''))
+ADMIN         = to_utf8(ENV['ADMIN_EMAIL']   || CFG.fetch('admin_email',        ''))
+SMTP_HOST     = to_utf8(ENV['SMTP_HOST']     || CFG.fetch('smtp_host',          'smtp.gmail.com'))
+SMTP_PORT     = (ENV['SMTP_PORT']            || CFG.fetch('smtp_port',          587)).to_i
+SMTP_USER     = to_utf8(ENV['SMTP_USER']     || CFG.fetch('smtp_user',          ''))
+SMTP_PASS     = to_utf8(ENV['SMTP_PASSWORD'] || CFG.fetch('smtp_password',      ''))
+PORT          = (ENV['PORT']                 || CFG.fetch('port',               3000)).to_i
 
 # ── ID OCR via Claude Vision ──────────────────────────────
 def call_claude_vision(image_b64)
