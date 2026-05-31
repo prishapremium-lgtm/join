@@ -269,7 +269,7 @@ puts "  Server: #{COMPANY.encode('UTF-8', invalid: :replace, undef: :replace)}"
 puts "=" * 52
 puts "  Port: #{PORT}"
 puts "  Admin: #{ADMIN}"
-puts "  SMTP: #{SMTP_HOST}:#{SMTP_PORT}"
+puts "  Email: SendGrid"
 puts ""
 
 trap('INT') do
