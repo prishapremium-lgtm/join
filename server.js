@@ -15,29 +15,29 @@ const COMPANY         = process.env.COMPANY_NAME    || CFG.company_name      || 
 const ANTHROPIC_KEY   = process.env.ANTHROPIC_KEY   || CFG.anthropic_api_key || '';
 const ADMIN           = process.env.ADMIN_EMAIL      || CFG.admin_email       || '';
 const SMTP_USER       = process.env.SMTP_USER        || CFG.smtp_user         || '';
-const SENDGRID_KEY    = process.env.SENDGRID_KEY     || CFG.sendgrid_key      || '';
+const RESEND_KEY      = process.env.RESEND_API_KEY   || CFG.resend_api_key    || '';
 const PORT            = parseInt(process.env.PORT    || CFG.port              || 3000, 10);
 const MAKE_WEBHOOK    = process.env.MAKE_WEBHOOK_URL || CFG.make_webhook_url  || '';
 
-// ── Mailer via SendGrid API ────────────────────────────────
-function sendGridSend({ to, subject, html, attachments = [] }) {
+// ── Mailer via Resend API ────────────────────────────────
+function resendSend({ to, subject, html, attachments = [] }) {
   return new Promise((resolve, reject) => {
-    if (!SENDGRID_KEY) return reject(new Error('מפתח SendGrid לא הוגדר (SENDGRID_KEY)'));
+    if (!RESEND_KEY) return reject(new Error('מפתח Resend לא הוגדר (RESEND_API_KEY)'));
 
     const body = JSON.stringify({
-      personalizations: [{ to: [{ email: to }] }],
-      from:    { email: SMTP_USER, name: COMPANY },
+      from: `${COMPANY} <${SMTP_USER}>`,
+      to:   [to],
       subject,
-      content: [{ type: 'text/html', value: html }],
+      html,
       ...(attachments.length ? { attachments } : {}),
     });
 
     const req = https.request({
-      hostname: 'api.sendgrid.com',
-      path:     '/v3/mail/send',
+      hostname: 'api.resend.com',
+      path:     '/emails',
       method:   'POST',
       headers:  {
-        'Authorization': `Bearer ${SENDGRID_KEY}`,
+        'Authorization': `Bearer ${RESEND_KEY}`,
         'Content-Type':  'application/json',
         'Content-Length': Buffer.byteLength(body),
       },
@@ -48,8 +48,8 @@ function sendGridSend({ to, subject, html, attachments = [] }) {
         if (res.statusCode >= 200 && res.statusCode < 300) {
           resolve();
         } else {
-          console.error('[SendGrid] Error', res.statusCode, raw);
-          reject(new Error(`SendGrid ${res.statusCode}: ${raw}`));
+          console.error('[Resend] Error', res.statusCode, raw);
+          reject(new Error(`Resend ${res.statusCode}: ${raw}`));
         }
       });
     });
@@ -109,16 +109,14 @@ async function sendEmails(client, pdfBuffer, idFile) {
 </div>`;
 
   const pdfAttachment = {
-    content:     pdfBuffer.toString('base64'),
-    filename:    pdfName,
-    type:        'application/pdf',
-    disposition: 'attachment',
+    content:  pdfBuffer.toString('base64'),
+    filename: pdfName,
   };
 
   const promises = [];
 
   if (email) {
-    promises.push(sendGridSend({
+    promises.push(resendSend({
       to:          email,
       subject:     `אישור הצטרפות – ${COMPANY}`,
       html:        clientHtml,
@@ -130,13 +128,11 @@ async function sendEmails(client, pdfBuffer, idFile) {
     const adminAttachments = [pdfAttachment];
     if (idFile && idFile.base64) {
       adminAttachments.push({
-        content:     idFile.base64,
-        filename:    idFile.filename || 'תעודת-זהות',
-        type:        idFile.mimeType || 'image/jpeg',
-        disposition: 'attachment',
+        content:  idFile.base64,
+        filename: idFile.filename || 'תעודת-זהות',
       });
     }
-    promises.push(sendGridSend({
+    promises.push(resendSend({
       to:          ADMIN,
       subject:     `לקוח חדש: ${first} ${last}`,
       html:        adminHtml,
@@ -298,7 +294,7 @@ app.post('/api/submit', async (req, res) => {
   } catch (e) {
     console.error('שגיאת שליחת מייל:', e.message);
     const msg = e.message.includes('401') || e.message.toLowerCase().includes('unauthorized')
-      ? 'שגיאת אימות – בדוק שמפתח SendGrid (SENDGRID_KEY) תקין ושכתובת השולח מאומתת'
+      ? 'שגיאת אימות – בדוק שמפתח Resend (RESEND_API_KEY) תקין ושכתובת השולח מאומתת (דומיין מאומת ב-Resend)'
       : `שגיאה פנימית: ${e.message}`;
     res.status(500).json({ success: false, message: msg });
   }
