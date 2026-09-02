@@ -1,0 +1,13 @@
+{
+  "name": "prisha-premium",
+  "version": "1.0.0",
+  "description": "פרישה פרימיום – מערכת קליטת לקוח",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "nodemailer": "^9.0.0"
+  }
+}

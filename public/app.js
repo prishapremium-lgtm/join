@@ -10,6 +10,9 @@
 let formData        = {};
 let signaturePad    = null;
 let idExtractedData = null;
+let idFileData      = null; // { base64, mimeType, filename } — קובץ הזיהוי המקורי
+let lastPdfBase64   = null;
+let lastPdfFilename = null;
 
 // ── Helpers ───────────────────────────────────────────────
 function formatDate(iso) {
@@ -47,20 +50,43 @@ async function compressImage(file) {
   });
 }
 
-async function extractIdData(file) {
+async function renderPdfToBase64(file) {
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  const data  = await file.arrayBuffer();
+  const pdf   = await pdfjsLib.getDocument({ data }).promise;
+  const scale = 2.5;
+
+  const pages = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page   = await pdf.getPage(i);
+    const vp     = page.getViewport({ scale });
+    const canvas = document.createElement('canvas');
+    canvas.width  = vp.width;
+    canvas.height = vp.height;
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+    pages.push(canvas);
+  }
+
+  const totalWidth  = Math.max(...pages.map(c => c.width));
+  const totalHeight = pages.reduce((sum, c) => sum + c.height, 0);
+  const combined    = document.createElement('canvas');
+  combined.width    = totalWidth;
+  combined.height   = totalHeight;
+  const ctx = combined.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, totalWidth, totalHeight);
+  let y = 0;
+  for (const c of pages) { ctx.drawImage(c, 0, y); y += c.height; }
+
+  return combined.toDataURL('image/jpeg', 0.85).split(',')[1];
+}
+
+async function extractIdData(base64) {
   const statusEl = document.getElementById('ocr-status');
   statusEl.className = 'ocr-status ocr-loading';
   statusEl.textContent = 'מזהה פרטים מהתעודה...';
   statusEl.classList.remove('hidden');
-  let base64;
-  try {
-    base64 = await compressImage(file);
-  } catch (err) {
-    statusEl.className = 'ocr-status ocr-warn';
-    statusEl.textContent = `שגיאה בהכנת התמונה: ${err.message}`;
-    console.error('compressImage error:', err);
-    return;
-  }
 
   try {
     const res    = await fetch('/api/extract-id', {
@@ -103,13 +129,49 @@ function initStep0() {
     document.getElementById('id-camera-input').click());
 
   ['id-file-input', 'id-camera-input'].forEach(id => {
-    document.getElementById(id).addEventListener('change', e => {
+    document.getElementById(id).addEventListener('change', async e => {
       const file = e.target.files[0];
       if (!file) return;
-      const preview = document.getElementById('id-preview');
-      preview.src = URL.createObjectURL(file);
+      const statusEl = document.getElementById('ocr-status');
+      const preview  = document.getElementById('id-preview');
       document.getElementById('id-preview-wrapper').classList.remove('hidden');
-      extractIdData(file);
+
+      // שמירת הקובץ המקורי לצרופה במייל
+      const reader = new FileReader();
+      reader.onload = ev => {
+        idFileData = {
+          base64:   ev.target.result.split(',')[1],
+          mimeType: file.type || 'image/jpeg',
+          filename: file.name || 'תעודת-זהות',
+        };
+      };
+      reader.readAsDataURL(file);
+
+      let base64;
+      if (file.type === 'application/pdf') {
+        statusEl.className = 'ocr-status ocr-loading';
+        statusEl.textContent = 'ממיר PDF לתמונה...';
+        statusEl.classList.remove('hidden');
+        try {
+          base64 = await renderPdfToBase64(file);
+          preview.src = 'data:image/jpeg;base64,' + base64;
+        } catch (err) {
+          statusEl.className = 'ocr-status ocr-warn';
+          statusEl.textContent = `שגיאה בקריאת ה-PDF: ${err.message}`;
+          return;
+        }
+      } else {
+        preview.src = URL.createObjectURL(file);
+        try {
+          base64 = await compressImage(file);
+        } catch (err) {
+          statusEl.className = 'ocr-status ocr-warn';
+          statusEl.textContent = `שגיאה בהכנת התמונה: ${err.message}`;
+          statusEl.classList.remove('hidden');
+          return;
+        }
+      }
+      extractIdData(base64);
     });
   });
 
@@ -119,6 +181,7 @@ function initStep0() {
     document.getElementById('id-file-input').value   = '';
     document.getElementById('id-camera-input').value = '';
     idExtractedData = null;
+    idFileData      = null;
   });
 
   document.getElementById('intro-continue-btn').addEventListener('click', () => {
@@ -377,10 +440,9 @@ async function generatePDF(sigDataUrl) {
     ph.className = 'sig-placeholder';
   });
 
-  // Download
-  pdf.save(`מסמכי-הצטרפות-${formData.firstName}-${formData.lastName}.pdf`);
-
-  return pdf.output('datauristring').split(',')[1];
+  lastPdfFilename = `מסמכי-הצטרפות-${formData.firstName}-${formData.lastName}.pdf`;
+  lastPdfBase64   = pdf.output('datauristring').split(',')[1];
+  return lastPdfBase64;
 }
 
 // ── Submit ────────────────────────────────────────────────
@@ -419,7 +481,7 @@ async function handleSubmit() {
     const res    = await fetch('/api/submit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ clientData: formData, signature: sigDataUrl, pdfBase64 }),
+      body: JSON.stringify({ clientData: formData, signature: sigDataUrl, pdfBase64, idFile: idFileData }),
     });
     const result = await res.json();
     showLoading(false);
@@ -459,6 +521,7 @@ document.getElementById('personal-form').addEventListener('submit', e => {
     birthDate:   formatDate(document.getElementById('birthDate').value),
     idIssueDate: formatDate(document.getElementById('idIssueDate').value),
     address:     document.getElementById('address').value.trim(),
+    gender:      idExtractedData?.gender || '1',
     passport:    document.querySelector('input[name="passport"]:checked')?.value || 'לא',
     travel:      document.querySelector('input[name="travel"]:checked')?.value  || 'לא',
   };
@@ -469,6 +532,15 @@ document.getElementById('personal-form').addEventListener('submit', e => {
 
 document.getElementById('back-btn').addEventListener('click',   () => goToStep(1));
 document.getElementById('submit-btn').addEventListener('click', handleSubmit);
+
+
+document.getElementById('download-pdf-btn').addEventListener('click', () => {
+  if (!lastPdfBase64 || !lastPdfFilename) return;
+  const a = document.createElement('a');
+  a.href     = 'data:application/pdf;base64,' + lastPdfBase64;
+  a.download = lastPdfFilename;
+  a.click();
+});
 
 // ── Init ──────────────────────────────────────────────────
 setupLiveValidation();

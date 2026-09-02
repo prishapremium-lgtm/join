@@ -11,6 +11,7 @@ require 'webrick'
 require 'json'
 # net/smtp replaced by SendGrid HTTP API
 require 'net/http'
+require 'net/smtp'
 require 'openssl'
 require 'base64'
 require 'uri'
@@ -27,7 +28,7 @@ COMPANY       = to_utf8(ENV['COMPANY_NAME']  || CFG.fetch('company_name',      '
 ANTHROPIC_KEY = to_utf8(ENV['ANTHROPIC_KEY'] || CFG.fetch('anthropic_api_key', ''))
 ADMIN         = to_utf8(ENV['ADMIN_EMAIL']   || CFG.fetch('admin_email',        ''))
 SMTP_USER     = to_utf8(ENV['SMTP_USER']       || CFG.fetch('smtp_user',       ''))
-SENDGRID_KEY  = to_utf8(ENV['SENDGRID_KEY']   || CFG.fetch('sendgrid_key',     ''))
+SMTP_PASS     = to_utf8(ENV['SMTP_PASSWORD']  || CFG.fetch('smtp_password',    ''))
 PORT          = (ENV['PORT']                 || CFG.fetch('port',               3000)).to_i
 
 # ── ID OCR via Claude Vision ──────────────────────────────
@@ -90,43 +91,63 @@ rescue => e
   { 'success' => false, 'message' => "שגיאה: #{e.message}" }
 end
 
-# ── Mailer via SendGrid API ───────────────────────────────
-def sendgrid_send(to:, subject:, html:, pdf_b64: nil, pdf_name: nil)
-  uri  = URI('https://api.sendgrid.com/v3/mail/send')
-  http = Net::HTTP.new(uri.host, uri.port)
-  http.use_ssl     = true
-  http.read_timeout = 30
+# ── Mailer via Gmail SMTP ─────────────────────────────────
+def smtp_send(to:, subject:, html:, attachments: [])
+  return if to.nil? || to.empty?
 
-  body = {
-    personalizations: [{ to: [{ email: to }] }],
-    from:    { email: SMTP_USER, name: COMPANY },
-    subject: subject,
-    content: [{ type: 'text/html', value: html }]
-  }
+  r        = "\r\n"
+  boundary = "PPBoundary#{Time.now.to_i}#{rand(100_000)}"
+  subj_enc = "=?UTF-8?B?#{Base64.strict_encode64(subject)}?="
+  from_enc = "=?UTF-8?B?#{Base64.strict_encode64(COMPANY)}?= <#{SMTP_USER}>"
 
-  if pdf_b64 && pdf_name
-    body[:attachments] = [{
-      content:     pdf_b64,
-      filename:    pdf_name,
-      type:        'application/pdf',
-      disposition: 'attachment'
-    }]
+  if attachments.empty?
+    msg = [
+      "MIME-Version: 1.0",
+      "From: #{from_enc}",
+      "To: #{to}",
+      "Subject: #{subj_enc}",
+      "Content-Type: text/html; charset=UTF-8",
+      "Content-Transfer-Encoding: base64",
+      "",
+      Base64.encode64(html.encode('UTF-8')),
+    ].join(r)
+  else
+    att_parts = attachments.flat_map do |att|
+      fname_enc = "=?UTF-8?B?#{Base64.strict_encode64(att[:filename].to_s)}?="
+      [
+        "--#{boundary}",
+        "Content-Type: #{att[:mime_type]}; name=\"#{fname_enc}\"",
+        "Content-Disposition: attachment; filename=\"#{fname_enc}\"",
+        "Content-Transfer-Encoding: base64",
+        "",
+        att[:base64],
+      ]
+    end
+    msg = [
+      "MIME-Version: 1.0",
+      "From: #{from_enc}",
+      "To: #{to}",
+      "Subject: #{subj_enc}",
+      "Content-Type: multipart/mixed; boundary=\"#{boundary}\"",
+      "",
+      "--#{boundary}",
+      "Content-Type: text/html; charset=UTF-8",
+      "Content-Transfer-Encoding: base64",
+      "",
+      Base64.encode64(html.encode('UTF-8')),
+      *att_parts,
+      "--#{boundary}--",
+    ].join(r)
   end
 
-  req = Net::HTTP::Post.new(uri.path)
-  req['Authorization'] = "Bearer #{SENDGRID_KEY}"
-  req['Content-Type']  = 'application/json'
-  req.body = JSON.generate(body)
-
-  resp = http.request(req)
-  unless resp.code.to_i.between?(200, 299)
-    STDERR.puts "[SendGrid] Error #{resp.code}: #{resp.body}"
-    raise "SendGrid #{resp.code}: #{resp.body}"
+  smtp = Net::SMTP.new('smtp.gmail.com', 587)
+  smtp.enable_starttls
+  smtp.start('gmail.com', SMTP_USER, SMTP_PASS, :login) do |s|
+    s.send_message msg, SMTP_USER, to
   end
-  resp
 end
 
-def send_emails(client, pdf_bytes)
+def send_emails(client, pdf_bytes, id_file = nil)
   first = client['firstName'] || ''
   last  = client['lastName']  || ''
   email = client['email']     || ''
@@ -178,8 +199,21 @@ def send_emails(client, pdf_bytes)
     </div>
   HTML
 
-  sendgrid_send(to: email,  subject: "אישור הצטרפות – #{COMPANY}", html: client_html, pdf_b64: pdf_b64, pdf_name: pdf_name) if email && !email.empty?
-  sendgrid_send(to: ADMIN,  subject: "לקוח חדש: #{first} #{last}", html: admin_html,  pdf_b64: pdf_b64, pdf_name: pdf_name) if ADMIN && !ADMIN.empty?
+  pdf_att = { base64: pdf_b64, mime_type: 'application/pdf', filename: pdf_name }
+
+  smtp_send(to: email, subject: "אישור הצטרפות – #{COMPANY}", html: client_html,
+            attachments: [pdf_att]) if email && !email.empty?
+
+  admin_atts = [pdf_att]
+  if id_file && !id_file['base64'].to_s.empty?
+    admin_atts << {
+      base64:    id_file['base64'],
+      mime_type: id_file['mimeType'] || 'image/jpeg',
+      filename:  id_file['filename'] || 'תעודת-זהות',
+    }
+  end
+  smtp_send(to: ADMIN, subject: "לקוח חדש: #{first} #{last}", html: admin_html,
+            attachments: admin_atts) if ADMIN && !ADMIN.empty?
 end
 
 # ── HTTP Servlet ──────────────────────────────────────────
@@ -214,6 +248,7 @@ class OnboardingServlet < WEBrick::HTTPServlet::AbstractServlet
       end
       client  = payload['clientData'] || {}
       pdf_b64 = payload['pdfBase64']  || ''
+      id_file = payload['idFile']
       if client['firstName'].to_s.empty?
         json_error(res, 400, 'נתונים חסרים'); return
       end
@@ -222,7 +257,7 @@ class OnboardingServlet < WEBrick::HTTPServlet::AbstractServlet
       end
       begin
         pdf_bytes = Base64.decode64(pdf_b64)
-        send_emails(client, pdf_bytes)
+        send_emails(client, pdf_bytes, id_file)
         json_ok(res, { success: true, message: 'המסמכים נשלחו בהצלחה!' })
       rescue Net::SMTPAuthenticationError => e
         STDERR.puts "SMTP Auth Error: #{e}"
