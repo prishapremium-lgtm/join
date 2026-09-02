@@ -1,1 +1,1 @@
-web: ruby server.rb
+web: node server.js

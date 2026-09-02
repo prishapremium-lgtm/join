@@ -1,7 +1,6 @@
 'use strict';
 
 const express    = require('express');
-const nodemailer = require('nodemailer');
 const https      = require('https');
 const fs         = require('fs');
 const path       = require('path');
@@ -16,17 +15,50 @@ const COMPANY         = process.env.COMPANY_NAME    || CFG.company_name      || 
 const ANTHROPIC_KEY   = process.env.ANTHROPIC_KEY   || CFG.anthropic_api_key || '';
 const ADMIN           = process.env.ADMIN_EMAIL      || CFG.admin_email       || '';
 const SMTP_USER       = process.env.SMTP_USER        || CFG.smtp_user         || '';
-const SMTP_PASS       = process.env.SMTP_PASSWORD    || CFG.smtp_password     || '';
+const SENDGRID_KEY    = process.env.SENDGRID_KEY     || CFG.sendgrid_key      || '';
 const PORT            = parseInt(process.env.PORT    || CFG.port              || 3000, 10);
 const MAKE_WEBHOOK    = process.env.MAKE_WEBHOOK_URL || CFG.make_webhook_url  || '';
 
-// ── Mailer ────────────────────────────────────────────────
-const transporter = nodemailer.createTransport({
-  host:   'smtp.gmail.com',
-  port:   587,
-  secure: false,
-  auth:   { user: SMTP_USER, pass: SMTP_PASS },
-});
+// ── Mailer via SendGrid API ────────────────────────────────
+function sendGridSend({ to, subject, html, attachments = [] }) {
+  return new Promise((resolve, reject) => {
+    if (!SENDGRID_KEY) return reject(new Error('מפתח SendGrid לא הוגדר (SENDGRID_KEY)'));
+
+    const body = JSON.stringify({
+      personalizations: [{ to: [{ email: to }] }],
+      from:    { email: SMTP_USER, name: COMPANY },
+      subject,
+      content: [{ type: 'text/html', value: html }],
+      ...(attachments.length ? { attachments } : {}),
+    });
+
+    const req = https.request({
+      hostname: 'api.sendgrid.com',
+      path:     '/v3/mail/send',
+      method:   'POST',
+      headers:  {
+        'Authorization': `Bearer ${SENDGRID_KEY}`,
+        'Content-Type':  'application/json',
+        'Content-Length': Buffer.byteLength(body),
+      },
+    }, (res) => {
+      let raw = '';
+      res.on('data', chunk => { raw += chunk; });
+      res.on('end', () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          resolve();
+        } else {
+          console.error('[SendGrid] Error', res.statusCode, raw);
+          reject(new Error(`SendGrid ${res.statusCode}: ${raw}`));
+        }
+      });
+    });
+
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+}
 
 async function sendEmails(client, pdfBuffer, idFile) {
   const first   = client.firstName || '';
@@ -76,13 +108,17 @@ async function sendEmails(client, pdfBuffer, idFile) {
   </div>
 </div>`;
 
-  const pdfAttachment = { filename: pdfName, content: pdfBuffer, contentType: 'application/pdf' };
+  const pdfAttachment = {
+    content:     pdfBuffer.toString('base64'),
+    filename:    pdfName,
+    type:        'application/pdf',
+    disposition: 'attachment',
+  };
 
   const promises = [];
 
   if (email) {
-    promises.push(transporter.sendMail({
-      from:        `"${COMPANY}" <${SMTP_USER}>`,
+    promises.push(sendGridSend({
       to:          email,
       subject:     `אישור הצטרפות – ${COMPANY}`,
       html:        clientHtml,
@@ -94,13 +130,13 @@ async function sendEmails(client, pdfBuffer, idFile) {
     const adminAttachments = [pdfAttachment];
     if (idFile && idFile.base64) {
       adminAttachments.push({
+        content:     idFile.base64,
         filename:    idFile.filename || 'תעודת-זהות',
-        content:     Buffer.from(idFile.base64, 'base64'),
-        contentType: idFile.mimeType || 'image/jpeg',
+        type:        idFile.mimeType || 'image/jpeg',
+        disposition: 'attachment',
       });
     }
-    promises.push(transporter.sendMail({
-      from:        `"${COMPANY}" <${SMTP_USER}>`,
+    promises.push(sendGridSend({
       to:          ADMIN,
       subject:     `לקוח חדש: ${first} ${last}`,
       html:        adminHtml,
@@ -261,8 +297,8 @@ app.post('/api/submit', async (req, res) => {
     res.json({ success: true, message: 'המסמכים נשלחו בהצלחה!' });
   } catch (e) {
     console.error('שגיאת שליחת מייל:', e.message);
-    const msg = e.message.includes('Invalid login') || e.message.includes('auth')
-      ? 'שגיאת אימות – בדוק smtp_user ו-smtp_password ב-config.json'
+    const msg = e.message.includes('401') || e.message.toLowerCase().includes('unauthorized')
+      ? 'שגיאת אימות – בדוק שמפתח SendGrid (SENDGRID_KEY) תקין ושכתובת השולח מאומתת'
       : `שגיאה פנימית: ${e.message}`;
     res.status(500).json({ success: false, message: msg });
   }
