@@ -4,6 +4,7 @@ const express    = require('express');
 const https      = require('https');
 const fs         = require('fs');
 const path       = require('path');
+const nodemailer = require('nodemailer');
 
 // ── Config ────────────────────────────────────────────────
 const CFG_FILE = path.join(__dirname, 'config.json');
@@ -15,48 +16,35 @@ const COMPANY         = process.env.COMPANY_NAME    || CFG.company_name      || 
 const ANTHROPIC_KEY   = process.env.ANTHROPIC_KEY   || CFG.anthropic_api_key || '';
 const ADMIN           = process.env.ADMIN_EMAIL      || CFG.admin_email       || '';
 const SMTP_USER       = process.env.SMTP_USER        || CFG.smtp_user         || '';
-const RESEND_KEY      = process.env.RESEND_API_KEY   || CFG.resend_api_key    || '';
+const SMTP_PASS       = process.env.SMTP_PASSWORD
+                     || process.env.SMTP_PASS
+                     || process.env.GMAIL_APP_PASSWORD
+                     || CFG.smtp_password
+                     || '';
 const PORT            = parseInt(process.env.PORT    || CFG.port              || 3000, 10);
 const MAKE_WEBHOOK    = process.env.MAKE_WEBHOOK_URL || CFG.make_webhook_url  || '';
 
-// ── Mailer via Resend API ────────────────────────────────
-function resendSend({ to, subject, html, attachments = [] }) {
-  return new Promise((resolve, reject) => {
-    if (!RESEND_KEY) return reject(new Error('מפתח Resend לא הוגדר (RESEND_API_KEY)'));
+// ── Mailer via Gmail SMTP (nodemailer) ───────────────────
+function getMailTransport() {
+  if (!SMTP_USER || !SMTP_PASS) {
+    throw new Error('חסר SMTP_USER או סיסמת אפליקציה (SMTP_PASSWORD / SMTP_PASS / GMAIL_APP_PASSWORD)');
+  }
+  return nodemailer.createTransport({
+    host:   'smtp.gmail.com',
+    port:   465,
+    secure: true,
+    auth:   { user: SMTP_USER, pass: SMTP_PASS },
+  });
+}
 
-    const body = JSON.stringify({
-      from: `${COMPANY} <${SMTP_USER}>`,
-      to:   [to],
-      subject,
-      html,
-      ...(attachments.length ? { attachments } : {}),
-    });
-
-    const req = https.request({
-      hostname: 'api.resend.com',
-      path:     '/emails',
-      method:   'POST',
-      headers:  {
-        'Authorization': `Bearer ${RESEND_KEY}`,
-        'Content-Type':  'application/json',
-        'Content-Length': Buffer.byteLength(body),
-      },
-    }, (res) => {
-      let raw = '';
-      res.on('data', chunk => { raw += chunk; });
-      res.on('end', () => {
-        if (res.statusCode >= 200 && res.statusCode < 300) {
-          resolve();
-        } else {
-          console.error('[Resend] Error', res.statusCode, raw);
-          reject(new Error(`Resend ${res.statusCode}: ${raw}`));
-        }
-      });
-    });
-
-    req.on('error', reject);
-    req.write(body);
-    req.end();
+async function smtpSend({ to, subject, html, attachments = [] }) {
+  const transporter = getMailTransport();
+  await transporter.sendMail({
+    from:    `${COMPANY} <${SMTP_USER}>`,
+    to,
+    subject,
+    html,
+    attachments,
   });
 }
 
@@ -109,14 +97,15 @@ async function sendEmails(client, pdfBuffer, idFile) {
 </div>`;
 
   const pdfAttachment = {
-    content:  pdfBuffer.toString('base64'),
     filename: pdfName,
+    content:  pdfBuffer,
+    contentType: 'application/pdf',
   };
 
   const promises = [];
 
   if (email) {
-    promises.push(resendSend({
+    promises.push(smtpSend({
       to:          email,
       subject:     `אישור הצטרפות – ${COMPANY}`,
       html:        clientHtml,
@@ -128,11 +117,13 @@ async function sendEmails(client, pdfBuffer, idFile) {
     const adminAttachments = [pdfAttachment];
     if (idFile && idFile.base64) {
       adminAttachments.push({
-        content:  idFile.base64,
-        filename: idFile.filename || 'תעודת-זהות',
+        filename:    idFile.filename || 'תעודת-זהות',
+        content:     idFile.base64,
+        encoding:    'base64',
+        contentType: idFile.mimeType || 'application/octet-stream',
       });
     }
-    promises.push(resendSend({
+    promises.push(smtpSend({
       to:          ADMIN,
       subject:     `לקוח חדש: ${first} ${last}`,
       html:        adminHtml,
@@ -293,8 +284,8 @@ app.post('/api/submit', async (req, res) => {
     res.json({ success: true, message: 'המסמכים נשלחו בהצלחה!' });
   } catch (e) {
     console.error('שגיאת שליחת מייל:', e.message);
-    const msg = e.message.includes('401') || e.message.toLowerCase().includes('unauthorized')
-      ? 'שגיאת אימות – בדוק שמפתח Resend (RESEND_API_KEY) תקין ושכתובת השולח מאומתת (דומיין מאומת ב-Resend)'
+    const msg = /auth|invalid login|username|password|535|EAUTH/i.test(e.message)
+      ? 'שגיאת אימות – בדוק SMTP_USER וסיסמת האפליקציה (SMTP_PASSWORD) ב-Railway'
       : `שגיאה פנימית: ${e.message}`;
     res.status(500).json({ success: false, message: msg });
   }
