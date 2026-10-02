@@ -8,4 +8,6 @@ start.command
 *.jpeg
 *.jpg
 *.png
+!public/logo.jpg
+!public/logo.png
 /tmp
