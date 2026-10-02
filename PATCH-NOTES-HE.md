@@ -1,44 +1,25 @@
-# מעבר מ-Resend ל-Gmail SMTP (טיוטת פאץ')
+# חיבור Make.com + Roeto אחרי הצטרפות
 
-## מה השתנה בקוד
-- `server.js`: במקום Resend API → nodemailer + Gmail SMTP (`smtp.gmail.com:465`)
-- `package.json` (+ lock): נוספה תלות `nodemailer`
-- אין יותר צורך ב-`RESEND_API_KEY` לשליחה
+## מה קורה ב־`/api/submit` (אחרי מיילים מוצלחים)
+1. **Resend** — אימייל ללקוח + לאדמין (חובה להצלחת התגובה למשתמש)
+2. **Make.com** — POST ל־`MAKE_WEBHOOK_URL` עם פרטי הלקוח + PDF (base64). אם חסר/נכשל → לוג בלבד
+3. **Roeto** — יצירת לקוח **טרום־יועץ** (`create-trom-yeutz-client`) לאחר OAuth (`client_credentials` + Basic). אם הלקוח כבר קיים → דילוג על יצירה (אופציונלי: `set-id-issue-date`). אם חסר/נכשל → לוג בלבד
 
-## משתני Railway (להגדיר)
-| משתנה | ערך מומלץ | חובה? |
-|--------|-----------|--------|
-| `SMTP_USER` | `AmirL@prishap.co.il` | כן |
-| `SMTP_PASSWORD` | סיסמת אפליקציה של Gmail (16 תווים) | כן (מומלץ השם הזה) |
-| `ADMIN_EMAIL` | מייל לקבלת עותק אדמין | כן (כמו היום) |
-| `COMPANY_NAME` | פרישה פרימיום | אופציונלי |
-| `ANTHROPIC_KEY` | כמו היום | כמו היום |
-| `MAKE_WEBHOOK_URL` | כמו היום | כמו היום |
-| `RESEND_API_KEY` | אפשר למחוק | לא נחוץ אחרי הפריסה |
+לא נוצרת בקשת מסלקה אוטומטית (בטיחות).
 
-שמות חלופיים לסיסמה (הקוד מקבל גם אותם): `SMTP_PASS` או `GMAIL_APP_PASSWORD`.
+## משתני Railway להגדיר (שמות בלבד — בלי ערכים ב־Git)
+| משתנה | חובה? | הערה |
+|--------|--------|------|
+| `MAKE_WEBHOOK_URL` | מומלץ | כתובת ה־webhook מ־Make (hook.eu1.make.com/…) |
+| `ROETO_API_URL` | אופציונלי | ברירת מחדל: `https://api.roeto.co.il/api/v1` |
+| `ROETO_CLIENT_ID` | מומלץ | מזהה לקוח API מרואטו |
+| `ROETO_CLIENT_SECRET` | מומלץ | סוד לקוח API מרואטו |
+| `RESEND_API_KEY` | כן | כבר קיים |
+| `ADMIN_EMAIL` | כן | כבר קיים |
+| `ANTHROPIC_KEY` | OCR | כבר קיים |
 
-## יצירת סיסמת אפליקציה (Gmail) – שלבים פשוטים
-1. להיכנס לחשבון Google של `AmirL@prishap.co.il`
-2. לוודא שמופעלת אימות דו-שלבי (2-Step Verification)
-3. ללכת ל: חשבון Google → אבטחה → סיסמאות אפליקציות (App passwords)
-   או ישירות: https://myaccount.google.com/apppasswords
-4. ליצור סיסמה חדשה (למשל שם: "join Railway")
-5. להעתיק את 16 התווים ל-Railway כ-`SMTP_PASSWORD` (בלי רווחים)
-6. **לא** לשלוח את הסיסמה לצ'אט / לקובץ בקוד
+ערכים מקומיים נמצאים ב־`config.json` בשולחן העבודה (לא להעלות ל־Git).
 
-## גישה ל-GitHub
-- חשבון Cursor: `amirl-lgtm`
-- ל-repo `prishapremium-lgtm/join`: **יש pull, אין push**
-- לכן אי אפשר לדחוף ישירות ל-main מפה
-
-## איך להכניס את השינוי ל-GitHub / Railway
-אפשרות א (מומלץ): בעל ה-repo (`prishapremium-lgtm`) נותן ל-`amirl-lgtm` הרשאת Write, ואז אפשר לפתוח PR/push.
-אפשרות ב: Fork ל-`amirl-lgtm/join` → push לשם → PR חזרה ל-`prishapremium-lgtm/join`.
-אפשרות ג: להדביק ידנית את השינויים מ-`/workspace/join-gmail-smtp.patch` או מתיקיית `/workspace/join-gmail-patch`.
-
-אחרי merge ל-main: Railway יפרוס מחדש → לוודא env vars → ניסיון הצטרפות אחד (בלי לשלוח סיסמה לצ'אט).
-
-## קבצים בתיבה
-- קוד מוכן: `/workspace/join-gmail-patch/` (כולל `node_modules` – לא לדחוף ל-git)
-- דיף מאוחד: `/workspace/join-gmail-smtp.patch`
+## מקור תיעוד Roeto
+- `https://api.roeto.co.il/api-docs/`
+- קבצי עזר מקומיים: `Roeto_API_Full_Reference.md`, `Roeto_Client_Onboarding_Mislaka_Flow.md`
