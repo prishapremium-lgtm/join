@@ -18,6 +18,10 @@ const SMTP_USER       = process.env.SMTP_USER        || CFG.smtp_user         ||
 const RESEND_KEY      = process.env.RESEND_API_KEY   || CFG.resend_api_key    || '';
 const PORT            = parseInt(process.env.PORT    || CFG.port              || 3000, 10);
 const MAKE_WEBHOOK    = process.env.MAKE_WEBHOOK_URL || CFG.make_webhook_url  || '';
+const ROETO_API_URL   = (process.env.ROETO_API_URL || CFG.roeto_api_url || 'https://api.roeto.co.il/api/v1').replace(/\/$/, '');
+const ROETO_CLIENT_ID = process.env.ROETO_CLIENT_ID || CFG.roeto_client_id || '';
+const ROETO_CLIENT_SECRET = process.env.ROETO_CLIENT_SECRET || CFG.roeto_client_secret || '';
+const INTEGRATION_TIMEOUT_MS = 20000;
 
 // ── Mailer via Resend HTTPS API ──────────────────────────
 // Railway blocks outbound Gmail SMTP; Resend works over HTTPS.
@@ -156,17 +160,104 @@ async function sendEmails(client, pdfBuffer, idFile) {
   await Promise.all(promises);
 }
 
-// ── Make Webhook ──────────────────────────────────────────
-function dmyToISO(dateStr) {
-  if (!dateStr) return '';
-  const [d, m, y] = dateStr.split('/');
-  return (d && m && y) ? `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}T00:00:00.000Z` : dateStr;
+// ── Shared HTTPS JSON helper ──────────────────────────────
+function httpsJson({ url, method = 'GET', headers = {}, body = null, timeoutMs = INTEGRATION_TIMEOUT_MS }) {
+  return new Promise((resolve, reject) => {
+    let parsed;
+    try {
+      parsed = new URL(url);
+    } catch (e) {
+      return reject(new Error(`URL לא תקין: ${url}`));
+    }
+    const payload = body == null ? null : (typeof body === 'string' ? body : JSON.stringify(body));
+    const opts = {
+      hostname: parsed.hostname,
+      path:     parsed.pathname + parsed.search,
+      method,
+      headers:  { ...headers },
+    };
+    if (payload != null) {
+      opts.headers['Content-Type'] = opts.headers['Content-Type'] || 'application/json';
+      opts.headers['Content-Length'] = Buffer.byteLength(payload);
+    }
+    const req = https.request(opts, (res) => {
+      let raw = '';
+      res.on('data', chunk => { raw += chunk; });
+      res.on('end', () => {
+        let data = null;
+        if (raw) {
+          try { data = JSON.parse(raw); } catch (_) { data = raw; }
+        }
+        resolve({ status: res.statusCode || 0, data, raw });
+      });
+    });
+    req.on('error', reject);
+    req.setTimeout(timeoutMs, () => {
+      req.destroy();
+      reject(new Error(`timeout after ${timeoutMs / 1000}s`));
+    });
+    if (payload != null) req.write(payload);
+    req.end();
+  });
 }
 
-function sendToMake(client, pdfBase64, pdfFilename) {
-  if (!MAKE_WEBHOOK) return;
+// ── Date / address helpers ────────────────────────────────
+function dmyToISO(dateStr) {
+  if (!dateStr) return '';
+  // DD/MM/YYYY from the form
+  if (dateStr.includes('/')) {
+    const [d, m, y] = dateStr.split('/');
+    return (d && m && y) ? `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}T00:00:00.000Z` : dateStr;
+  }
+  // YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) return `${dateStr.slice(0, 10)}T00:00:00.000Z`;
+  return dateStr;
+}
 
-  const payload = JSON.stringify({
+/** Convert join form dates (DD/MM/YYYY or YYYY-MM-DD) → Roeto DD-MM-YYYY */
+function toRoetoDate(dateStr) {
+  if (!dateStr || dateStr === '-') return '';
+  if (dateStr.includes('/')) {
+    const [d, m, y] = dateStr.split('/');
+    if (d && m && y) return `${d.padStart(2,'0')}-${m.padStart(2,'0')}-${y}`;
+  }
+  if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
+    const [y, m, d] = dateStr.slice(0, 10).split('-');
+    return `${d}-${m}-${y}`;
+  }
+  if (/^\d{2}-\d{2}-\d{4}$/.test(dateStr)) return dateStr;
+  return '';
+}
+
+function digitsOnly(s) {
+  return String(s || '').replace(/\D/g, '');
+}
+
+/** Best-effort split of free-text Israeli address into city + street */
+function parseAddress(address) {
+  const raw = String(address || '').trim();
+  if (!raw) return { city: 'לא צוין', street: 'לא צוין' };
+  const parts = raw.split(',').map(p => p.trim()).filter(Boolean);
+  if (parts.length >= 2) {
+    return { city: parts[parts.length - 1], street: parts.slice(0, -1).join(', ') };
+  }
+  const tokens = raw.split(/\s+/);
+  if (tokens.length >= 2) {
+    return { city: tokens[tokens.length - 1], street: tokens.slice(0, -1).join(' ') };
+  }
+  return { city: 'לא צוין', street: raw };
+}
+
+// ── Make Webhook (fail-soft) ──────────────────────────────
+async function sendToMake(client, pdfBase64, pdfFilename) {
+  if (!MAKE_WEBHOOK) {
+    console.log('[Make] skipped – MAKE_WEBHOOK_URL לא הוגדר');
+    return { skipped: true };
+  }
+
+  const payload = {
+    source:      'join',
+    company:     COMPANY,
     firstName:   client.firstName   || '',
     lastName:    client.lastName    || '',
     idNumber:    client.idNumber    || '',
@@ -179,23 +270,142 @@ function sendToMake(client, pdfBase64, pdfFilename) {
     pdfBase64,
     pdfFilename,
     submittedAt: new Date().toISOString(),
-  });
-
-  const url  = new URL(MAKE_WEBHOOK);
-  const opts = {
-    hostname: url.hostname,
-    path:     url.pathname,
-    method:   'POST',
-    headers:  { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
   };
 
-  const req = https.request(opts, (res) => {
-    console.log('[Make] webhook status:', res.statusCode);
-  });
-  req.on('error', (e) => console.error('[Make] webhook error:', e.message));
-  req.write(payload);
-  req.end();
+  try {
+    const res = await httpsJson({ url: MAKE_WEBHOOK, method: 'POST', body: payload });
+    console.log('[Make] webhook status:', res.status);
+    return { ok: res.status >= 200 && res.status < 300, status: res.status };
+  } catch (e) {
+    console.error('[Make] webhook error:', e.message);
+    return { ok: false, error: e.message };
+  }
 }
+
+// ── Roeto (trom-yeutz create, fail-soft) ──────────────────
+let roetoTokenCache = { token: '', expiresAt: 0 };
+
+async function getRoetoToken() {
+  if (!ROETO_CLIENT_ID || !ROETO_CLIENT_SECRET) {
+    throw new Error('חסרים ROETO_CLIENT_ID / ROETO_CLIENT_SECRET');
+  }
+  const now = Date.now();
+  if (roetoTokenCache.token && roetoTokenCache.expiresAt > now + 60_000) {
+    return roetoTokenCache.token;
+  }
+  const basic = Buffer.from(`${ROETO_CLIENT_ID}:${ROETO_CLIENT_SECRET}`).toString('base64');
+  const res = await httpsJson({
+    url:    `${ROETO_API_URL}/oauth/token`,
+    method: 'POST',
+    headers: { Authorization: `Basic ${basic}` },
+    body:   { grant_type: 'client_credentials' },
+  });
+  if (res.status < 200 || res.status >= 300 || !res.data || !res.data.token) {
+    const msg = (res.data && (res.data.message || res.data.error)) || res.raw || `HTTP ${res.status}`;
+    throw new Error(`Roeto auth failed: ${msg}`);
+  }
+  // JWT lifetime unknown — cache ~50 minutes
+  roetoTokenCache = { token: res.data.token, expiresAt: now + 50 * 60 * 1000 };
+  return res.data.token;
+}
+
+async function sendToRoeto(client) {
+  if (!ROETO_CLIENT_ID || !ROETO_CLIENT_SECRET) {
+    console.log('[Roeto] skipped – credentials לא הוגדרו');
+    return { skipped: true };
+  }
+
+  const personalID = digitsOnly(client.idNumber);
+  if (!/^\d{9}$/.test(personalID)) {
+    console.warn('[Roeto] skipped – ת.ז לא תקינה');
+    return { skipped: true, reason: 'invalid_id' };
+  }
+
+  try {
+    const token = await getRoetoToken();
+    const authHeaders = { Authorization: `Bearer ${token}` };
+    const { city, street } = parseAddress(client.address);
+    const birthDay = toRoetoDate(client.birthDate);
+    const gender = (client.gender === '2' || client.gender === 2) ? '2' : '1';
+    const phone = digitsOnly(client.phone);
+
+    // Soft existence check (search) — if found, do not create again
+    try {
+      const search = await httpsJson({
+        url: `${ROETO_API_URL}/clients/search?userID=${encodeURIComponent(personalID)}`,
+        method: 'GET',
+        headers: authHeaders,
+      });
+      if (search.status === 200 && Array.isArray(search.data) && search.data.length > 0) {
+        console.log('[Roeto] client already exists – skip create, try idIssueDate');
+        const idIssue = toRoetoDate(client.idIssueDate);
+        if (idIssue) {
+          const upd = await httpsJson({
+            url: `${ROETO_API_URL}/clients/${encodeURIComponent(personalID)}/set-id-issue-date`,
+            method: 'POST',
+            headers: authHeaders,
+            body: { idIssueDate: idIssue },
+          });
+          console.log('[Roeto] set-id-issue-date status:', upd.status);
+        }
+        return { ok: true, existed: true, userID: personalID };
+      }
+    } catch (e) {
+      console.warn('[Roeto] search warning:', e.message);
+    }
+
+    const body = {
+      personalID,
+      firstName:    client.firstName || '',
+      lastName:     client.lastName  || '',
+      gender,
+      birthDay:     birthDay || '01-01-1970',
+      primaryPhone: phone || '0500000000',
+      email:        client.email || '',
+      city,
+      street,
+    };
+
+    const create = await httpsJson({
+      url: `${ROETO_API_URL}/clients/create-trom-yeutz-client`,
+      method: 'POST',
+      headers: authHeaders,
+      body,
+    });
+
+    if (create.status >= 200 && create.status < 300) {
+      console.log('[Roeto] trom-yeutz created for', personalID);
+      const idIssue = toRoetoDate(client.idIssueDate);
+      if (idIssue) {
+        try {
+          const upd = await httpsJson({
+            url: `${ROETO_API_URL}/clients/${encodeURIComponent(personalID)}/set-id-issue-date`,
+            method: 'POST',
+            headers: authHeaders,
+            body: { idIssueDate: idIssue },
+          });
+          console.log('[Roeto] set-id-issue-date status:', upd.status);
+        } catch (e) {
+          console.warn('[Roeto] set-id-issue-date warning:', e.message);
+        }
+      }
+      return { ok: true, created: true, userID: personalID, data: create.data };
+    }
+
+    // 400 often means already exists — treat as soft success
+    if (create.status === 400) {
+      console.warn('[Roeto] create 400 (possibly exists):', typeof create.data === 'string' ? create.data : JSON.stringify(create.data));
+      return { ok: true, existed: true, userID: personalID, status: 400 };
+    }
+
+    console.error('[Roeto] create failed', create.status, typeof create.data === 'string' ? create.data : JSON.stringify(create.data));
+    return { ok: false, status: create.status, data: create.data };
+  } catch (e) {
+    console.error('[Roeto] error:', e.message);
+    return { ok: false, error: e.message };
+  }
+}
+
 
 // ── Claude Vision ─────────────────────────────────────────
 function callClaudeVision(imageB64) {
@@ -302,7 +512,14 @@ app.post('/api/submit', async (req, res) => {
     const pdfBuffer  = Buffer.from(pdfBase64, 'base64');
     const pdfFilename = `הצטרפות-${client.firstName || ''}-${client.lastName || ''}.pdf`;
     await sendEmails(client, pdfBuffer, idFile);
-    sendToMake(client, pdfBase64, pdfFilename);
+    // Make + Roeto: fail-soft — email success is enough for the user response
+    Promise.allSettled([
+      sendToMake(client, pdfBase64, pdfFilename),
+      sendToRoeto(client),
+    ]).then((results) => {
+      console.log('[integrations] Make:', results[0].status, results[0].value || results[0].reason);
+      console.log('[integrations] Roeto:', results[1].status, results[1].value || results[1].reason);
+    });
     res.json({ success: true, message: 'המסמכים נשלחו בהצלחה!' });
   } catch (e) {
     console.error('שגיאת שליחת מייל:', e.message);
