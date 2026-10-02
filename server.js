@@ -262,6 +262,8 @@ async function sendToMake(client, pdfBase64, pdfFilename) {
     lastName:    client.lastName    || '',
     idNumber:    client.idNumber    || '',
     birthDate:   dmyToISO(client.birthDate),
+    // Roeto Make module expects birthDay (DD-MM-YYYY), same value as birthDate
+    birthDay:    toRoetoDate(client.birthDate),
     idIssueDate: dmyToISO(client.idIssueDate),
     phone:       client.phone       || '',
     email:       client.email       || '',
