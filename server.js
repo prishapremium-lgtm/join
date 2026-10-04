@@ -14,6 +14,26 @@ const CFG = fs.existsSync(CFG_FILE)
 const COMPANY         = process.env.COMPANY_NAME    || CFG.company_name      || 'פרישה פרימיום';
 const ANTHROPIC_KEY   = process.env.ANTHROPIC_KEY   || CFG.anthropic_api_key || '';
 const ADMIN           = process.env.ADMIN_EMAIL      || CFG.admin_email       || '';
+// Admin document emails always also go here. Does not replace ADMIN_EMAIL.
+const SERVICE_EMAIL   = 'service@prishap.co.il';
+
+function parseEmailList(value) {
+  const items = Array.isArray(value) ? value : String(value || '').split(/[,;]/);
+  const seen = new Set();
+  const out = [];
+  for (const raw of items) {
+    const email = String(raw || '').trim();
+    const key = email.toLowerCase();
+    if (!email || seen.has(key)) continue;
+    seen.add(key);
+    out.push(email);
+  }
+  return out;
+}
+
+function adminRecipients() {
+  return parseEmailList([...parseEmailList(ADMIN), SERVICE_EMAIL]);
+}
 const SMTP_USER       = process.env.SMTP_USER        || CFG.smtp_user         || '';
 const RESEND_KEY      = process.env.RESEND_API_KEY   || CFG.resend_api_key    || '';
 const PORT            = parseInt(process.env.PORT    || CFG.port              || 3000, 10);
@@ -34,9 +54,12 @@ function resendSend({ to, subject, html, attachments = [] }) {
   return new Promise((resolve, reject) => {
     if (!RESEND_KEY) return reject(new Error('מפתח Resend לא הוגדר (RESEND_API_KEY)'));
 
+    const recipients = parseEmailList(to);
+    if (!recipients.length) return reject(new Error('לא הוגדר נמען למייל'));
+
     const payload = {
       from:    RESEND_FROM,
-      to:      [to],
+      to:      recipients,
       subject,
       html,
     };
@@ -141,7 +164,8 @@ async function sendEmails(client, pdfBuffer, idFile) {
     }));
   }
 
-  if (ADMIN) {
+  const adminTo = adminRecipients();
+  if (adminTo.length) {
     const adminAttachments = [pdfAttachment];
     if (idFile && idFile.base64) {
       adminAttachments.push({
@@ -150,7 +174,7 @@ async function sendEmails(client, pdfBuffer, idFile) {
       });
     }
     promises.push(resendSend({
-      to:          ADMIN,
+      to:          adminTo,
       subject:     `לקוח חדש: ${first} ${last}`,
       html:        adminHtml,
       attachments: adminAttachments,
@@ -541,7 +565,7 @@ app.listen(PORT, () => {
   console.log(`  Server: ${COMPANY}`);
   console.log('====================================================');
   console.log(`  Port:  ${PORT}`);
-  console.log(`  Admin: ${ADMIN}`);
+  console.log(`  Admin: ${adminRecipients().join(', ')}`);
   console.log(`  URL:   http://localhost:${PORT}`);
   console.log('');
 });
