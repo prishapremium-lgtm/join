@@ -14,8 +14,8 @@ const CFG = fs.existsSync(CFG_FILE)
 const COMPANY         = process.env.COMPANY_NAME    || CFG.company_name      || 'פרישה פרימיום';
 const ANTHROPIC_KEY   = process.env.ANTHROPIC_KEY   || CFG.anthropic_api_key || '';
 const ADMIN           = process.env.ADMIN_EMAIL      || CFG.admin_email       || '';
-// Admin document emails always also go here. Does not replace ADMIN_EMAIL.
-const SERVICE_EMAIL   = 'service@prishap.co.il';
+// service@prishap.co.il is paused until the Resend sending domain is verified
+// (sandbox from onboarding@resend.dev only allows the account owner email).
 
 function parseEmailList(value) {
   const items = Array.isArray(value) ? value : String(value || '').split(/[,;]/);
@@ -32,7 +32,7 @@ function parseEmailList(value) {
 }
 
 function adminRecipients() {
-  return parseEmailList([...parseEmailList(ADMIN), SERVICE_EMAIL]);
+  return parseEmailList(ADMIN);
 }
 const SMTP_USER       = process.env.SMTP_USER        || CFG.smtp_user         || '';
 const RESEND_KEY      = process.env.RESEND_API_KEY   || CFG.resend_api_key    || '';
@@ -549,11 +549,23 @@ app.post('/api/submit', async (req, res) => {
     res.json({ success: true, message: 'המסמכים נשלחו בהצלחה!' });
   } catch (e) {
     console.error('שגיאת שליחת מייל:', e.message);
-    const msg = /api.?key|unauthorized|401|403|RESEND_API_KEY/i.test(e.message)
-      ? 'שגיאת אימות – בדוק RESEND_API_KEY ב-Railway'
-      : /timeout/i.test(e.message)
-      ? 'שליחת המייל נכשלה – תם הזמן. נסה שוב.'
-      : `שגיאה פנימית: ${e.message}`;
+    let msg;
+    if (/timeout/i.test(e.message)) {
+      msg = 'שליחת המייל נכשלה – תם הזמן. נסה שוב.';
+    } else if (/api.?key|unauthorized|401|RESEND_API_KEY/i.test(e.message)
+      && !/validation_error|403/i.test(e.message)) {
+      msg = 'שגיאת אימות – בדוק RESEND_API_KEY ב-Railway';
+    } else {
+      let detail = e.message;
+      const m = String(e.message || '').match(/Resend\s+\d+:\s*(.+)$/i);
+      if (m) {
+        try {
+          const parsed = JSON.parse(m[1]);
+          if (parsed && parsed.message) detail = parsed.message;
+        } catch (_) { /* keep raw */ }
+      }
+      msg = `שגיאת Resend: ${detail}`;
+    }
     res.status(500).json({ success: false, message: msg });
   }
 });
