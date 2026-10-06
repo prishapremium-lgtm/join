@@ -32,6 +32,11 @@ function showLoading(v)     { document.getElementById('loading-overlay').classLi
 // Keep in sync with composeAddress in server.js
 const MAX_ID_PAGES = 8;
 const MAX_ID_FILE_BYTES = 25 * 1024 * 1024;
+// Admin PDF only. ~1800px on the long edge is about 160–240 dpi once the
+// photo sits on A4, and JPEG 0.72 keeps the ID readable. OCR is encoded
+// separately from the full enhanced image and does not use these limits.
+const ID_PDF_MAX_SIDE = 1800;
+const ID_PDF_JPEG_QUALITY = 0.72;
 const ID_FIELD_KEYS = ['firstName','lastName','idNumber','birthDate','idIssueDate','gender','street','houseNumber','apartment','city','zip'];
 
 let idPages = [];
@@ -361,7 +366,8 @@ function canvasToBlob(canvas, type, quality) {
 
 async function canvasToIdPage(source, filename) {
   const enhanced = enhanceForReadability(source);
-  const pdfDataUrl = enhanced.toDataURL('image/jpeg', 0.9);
+  const pdfCanvas = downscaleCanvas(enhanced, ID_PDF_MAX_SIDE);
+  const pdfDataUrl = pdfCanvas.toDataURL('image/jpeg', ID_PDF_JPEG_QUALITY);
   const ocrCanvas = downscaleCanvas(enhanced, 1600);
   const ocrBase64 = ocrCanvas.toDataURL('image/jpeg', 0.82).split(',')[1];
   const thumb = downscaleCanvas(enhanced, 360);
