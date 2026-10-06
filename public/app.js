@@ -3,14 +3,14 @@
    פרישה פרימיום – app.js
    4 legal documents: הסכמת לקוח, נספח א (פנסיוני), נספח ב (ביטוח), נספח ה (הר הביטוח)
    PDF: generated in-browser via html2canvas + jsPDF
-   Email: sent via /api/submit (Ruby server)
+   Email: sent via /api/submit
 ══════════════════════════════════════════════════════════ */
 
 // ── State ─────────────────────────────────────────────────
 let formData        = {};
 let signaturePad    = null;
 let idExtractedData = null;
-let idFileData      = null; // { base64, mimeType, filename } — קובץ הזיהוי המקורי
+let idFileData      = null; // { base64, mimeType, filename } — מסמך הזיהוי המאוחד לאדמין
 let lastPdfBase64   = null;
 let lastPdfFilename = null;
 
@@ -29,97 +29,528 @@ function setLoadingMsg(msg) { document.getElementById('loading-msg').textContent
 function showLoading(v)     { document.getElementById('loading-overlay').classList.toggle('hidden', !v); }
 
 // ── Step 0 – Intro & ID upload ───────────────────────────
-async function compressImage(file) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('טעינת תמונה נכשלה')); };
-    img.onload = () => {
-      try {
-        const MAX = 1400;
-        const scale  = Math.min(1, MAX / Math.max(img.width, img.height));
-        const canvas = document.createElement('canvas');
-        canvas.width  = Math.max(1, Math.round(img.width  * scale));
-        canvas.height = Math.max(1, Math.round(img.height * scale));
-        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-        URL.revokeObjectURL(url);
-        resolve(canvas.toDataURL('image/jpeg', 0.85).split(',')[1]);
-      } catch (e) { URL.revokeObjectURL(url); reject(e); }
+// Keep in sync with composeAddress in server.js
+const MAX_ID_PAGES = 8;
+const MAX_ID_FILE_BYTES = 25 * 1024 * 1024;
+const ID_FIELD_KEYS = ['firstName','lastName','idNumber','birthDate','idIssueDate','gender','street','houseNumber','apartment','city','zip'];
+
+let idPages = [];
+let idPageSeq = 1;
+let idJobToken = 0;
+let idPipeline = Promise.resolve();
+
+function composeAddress(parts = {}) {
+  const street = String(parts.street || '').trim();
+  const house = String(parts.houseNumber || '').trim();
+  const apt = String(parts.apartment || '').trim();
+  const city = String(parts.city || '').trim();
+  const zip = String(parts.zip || '').trim();
+  let line = [street, house].filter(Boolean).join(' ');
+  if (apt) line = line ? `${line}, דירה ${apt}` : `דירה ${apt}`;
+  return [line, city, zip].filter(Boolean).join(', ');
+}
+
+function yieldToUi() {
+  return new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
+}
+
+function enqueueIdWork(fn) {
+  const run = idPipeline.then(() => fn());
+  idPipeline = run.then(() => {}, err => { console.error('id pipeline', err); });
+  return run;
+}
+
+function setOcrStatus(kind, text) {
+  const statusEl = document.getElementById('ocr-status');
+  statusEl.className = `ocr-status ocr-${kind}`;
+  statusEl.textContent = text;
+  statusEl.classList.remove('hidden');
+}
+
+function friendlyOcrError(message) {
+  const msg = String(message || '');
+  if (/מפתח|לא הוגדר|ANTHROPIC/i.test(msg)) return 'זיהוי אוטומטי לא זמין כרגע. אפשר להמשיך ולמלא ידנית.';
+  if (/תם הזמן|timeout/i.test(msg)) return 'הזיהוי לקח יותר מדי זמן. אפשר לנסות שוב או למלא ידנית.';
+  return 'לא הצלחנו לזהות את הפרטים אוטומטית. אפשר להמשיך ולמלא ידנית.';
+}
+
+const scriptPromises = {};
+function loadScript(src) {
+  if (scriptPromises[src]) return scriptPromises[src];
+  scriptPromises[src] = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.async = true;
+    s.onload = () => resolve();
+    s.onerror = () => {
+      delete scriptPromises[src];
+      reject(new Error('טעינת כלי עזר נכשלה'));
     };
+    document.head.appendChild(s);
+  });
+  return scriptPromises[src];
+}
+
+function isHeic(file) {
+  const type = (file.type || '').toLowerCase();
+  const name = (file.name || '').toLowerCase();
+  return type.includes('heic') || type.includes('heif') || name.endsWith('.heic') || name.endsWith('.heif');
+}
+
+function blobToImage(blob) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('הדפדפן לא הצליח לקרוא את הקובץ')); };
     img.src = url;
   });
 }
 
-async function renderPdfToBase64(file) {
-  pdfjsLib.GlobalWorkerOptions.workerSrc =
-    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-  const data  = await file.arrayBuffer();
-  const pdf   = await pdfjsLib.getDocument({ data }).promise;
-  const scale = 2.5;
-
-  const pages = [];
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page   = await pdf.getPage(i);
-    const vp     = page.getViewport({ scale });
-    const canvas = document.createElement('canvas');
-    canvas.width  = vp.width;
-    canvas.height = vp.height;
-    await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
-    pages.push(canvas);
-  }
-
-  const totalWidth  = Math.max(...pages.map(c => c.width));
-  const totalHeight = pages.reduce((sum, c) => sum + c.height, 0);
-  const combined    = document.createElement('canvas');
-  combined.width    = totalWidth;
-  combined.height   = totalHeight;
-  const ctx = combined.getContext('2d');
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, totalWidth, totalHeight);
-  let y = 0;
-  for (const c of pages) { ctx.drawImage(c, 0, y); y += c.height; }
-
-  return combined.toDataURL('image/jpeg', 0.85).split(',')[1];
+function imageToCanvas(img) {
+  const sw = img.naturalWidth || img.width;
+  const sh = img.naturalHeight || img.height;
+  if (!sw || !sh) throw new Error('התמונה ריקה');
+  const long = Math.max(sw, sh);
+  const scale = long > 2400 ? 2400 / long : 1;
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(sw * scale));
+  canvas.height = Math.max(1, Math.round(sh * scale));
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  return canvas;
 }
 
-async function extractIdData(base64) {
-  const statusEl = document.getElementById('ocr-status');
-  statusEl.className = 'ocr-status ocr-loading';
-  statusEl.textContent = 'מזהה פרטים מהתעודה...';
-  statusEl.classList.remove('hidden');
+function downscaleCanvas(canvas, maxSide) {
+  const long = Math.max(canvas.width, canvas.height);
+  if (long <= maxSide) return canvas;
+  const scale = maxSide / long;
+  const out = document.createElement('canvas');
+  out.width = Math.max(1, Math.round(canvas.width * scale));
+  out.height = Math.max(1, Math.round(canvas.height * scale));
+  const ctx = out.getContext('2d');
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(canvas, 0, 0, out.width, out.height);
+  return out;
+}
 
+function percentileFromHist(hist, n, q) {
+  const target = Math.max(0, Math.min(n - 1, Math.floor(n * q)));
+  let acc = 0;
+  for (let i = 0; i < 256; i++) {
+    acc += hist[i];
+    if (acc > target) return i;
+  }
+  return 255;
+}
+
+function boxBlurLuma(src, w, h, radius) {
+  const tmp = new Float32Array(src.length);
+  const out = new Float32Array(src.length);
+  const win = radius * 2 + 1;
+  for (let y = 0; y < h; y++) {
+    const row = y * w;
+    for (let x = 0; x < w; x++) {
+      let sum = 0;
+      for (let k = -radius; k <= radius; k++) {
+        const xx = Math.min(w - 1, Math.max(0, x + k));
+        sum += src[row + xx];
+      }
+      tmp[row + x] = sum / win;
+    }
+  }
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let sum = 0;
+      for (let k = -radius; k <= radius; k++) {
+        const yy = Math.min(h - 1, Math.max(0, y + k));
+        sum += tmp[yy * w + x];
+      }
+      out[y * w + x] = sum / win;
+    }
+  }
+  return out;
+}
+
+function applyReadability(imageData) {
+  const { data, width, height } = imageData;
+  const n = width * height;
+  if (n < 16) return;
+  const hist = new Uint32Array(256);
+  for (let p = 0, i = 0; p < n; p++, i += 4) {
+    const y = (data[i] * 54 + data[i + 1] * 183 + data[i + 2] * 19) >> 8;
+    hist[y]++;
+  }
+  let black = percentileFromHist(hist, n, 0.005);
+  let white = percentileFromHist(hist, n, 0.995);
+  if (white - black < 16) {
+    let sum = 0;
+    let count = 0;
+    for (let v = 0; v < 256; v++) { sum += hist[v] * v; count += hist[v]; }
+    const mean = count ? sum / count : 128;
+    black = Math.max(0, Math.round(mean - 50));
+    white = Math.min(255, Math.round(mean + 50));
+  }
+  if (white - black < 8) return;
+
+  const lut = new Uint8Array(256);
+  const span = white - black;
+  for (let v = 0; v < 256; v++) {
+    let x = (v - black) / span;
+    if (x < 0) x = 0;
+    else if (x > 1) x = 1;
+    x = x + 0.06 * Math.sin((x - 0.5) * Math.PI);
+    if (x < 0) x = 0;
+    else if (x > 1) x = 1;
+    lut[v] = Math.round(x * 255);
+  }
+
+  const luma = new Float32Array(n);
+  for (let p = 0, i = 0; p < n; p++, i += 4) {
+    data[i] = lut[data[i]];
+    data[i + 1] = lut[data[i + 1]];
+    data[i + 2] = lut[data[i + 2]];
+    luma[p] = (data[i] * 54 + data[i + 1] * 183 + data[i + 2] * 19) >> 8;
+  }
+
+  const blur = boxBlurLuma(luma, width, height, 2);
+  const amount = 0.8;
+  for (let p = 0, i = 0; p < n; p++, i += 4) {
+    const delta = (luma[p] - blur[p]) * amount;
+    data[i]     = clampByte(data[i] + delta);
+    data[i + 1] = clampByte(data[i + 1] + delta);
+    data[i + 2] = clampByte(data[i + 2] + delta);
+  }
+}
+
+function clampByte(v) {
+  if (v < 0) return 0;
+  if (v > 255) return 255;
+  return v | 0;
+}
+
+function enhanceForReadability(source) {
+  const limited = downscaleCanvas(source, 2400);
+  const sw = limited.width;
+  const sh = limited.height;
+  const long = Math.max(sw, sh);
+  const scale = long < 1500 ? Math.min(2.2, 2000 / Math.max(long, 1)) : 1;
+  const w = Math.max(1, Math.round(sw * scale));
+  const h = Math.max(1, Math.round(sh * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, w, h);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  if (scale > 1.7) {
+    const mid = document.createElement('canvas');
+    const m = Math.sqrt(scale);
+    mid.width = Math.max(1, Math.round(sw * m));
+    mid.height = Math.max(1, Math.round(sh * m));
+    const mctx = mid.getContext('2d');
+    mctx.imageSmoothingEnabled = true;
+    mctx.imageSmoothingQuality = 'high';
+    mctx.drawImage(limited, 0, 0, mid.width, mid.height);
+    ctx.drawImage(mid, 0, 0, w, h);
+  } else {
+    ctx.drawImage(limited, 0, 0, w, h);
+  }
+  const imageData = ctx.getImageData(0, 0, w, h);
+  applyReadability(imageData);
+  ctx.putImageData(imageData, 0, 0);
+  return canvas;
+}
+
+async function pdfToCanvases(file) {
+  if (!window.pdfjsLib) throw new Error('ספריית PDF לא נטענה');
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  const data = new Uint8Array(await file.arrayBuffer());
+  let pdf;
   try {
-    const res    = await fetch('/api/extract-id', {
+    pdf = await pdfjsLib.getDocument({ data }).promise;
+  } catch (err) {
+    throw new Error('לא הצלחנו לקרוא את ה-PDF');
+  }
+  const canvases = [];
+  const count = Math.min(pdf.numPages, MAX_ID_PAGES);
+  for (let i = 1; i <= count; i++) {
+    const page = await pdf.getPage(i);
+    const base = page.getViewport({ scale: 1 });
+    const scale = Math.max(1.2, Math.min(3.2, 2200 / Math.max(base.width, base.height)));
+    const vp = page.getViewport({ scale });
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(vp.width));
+    canvas.height = Math.max(1, Math.round(vp.height));
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    await page.render({ canvasContext: ctx, viewport: vp }).promise;
+    canvases.push(canvas);
+  }
+  if (pdf.numPages > count) canvases.truncated = pdf.numPages;
+  return canvases;
+}
+
+async function heicToCanvases(file) {
+  if (!window.heic2any) {
+    await loadScript('https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js');
+  }
+  let out;
+  try {
+    out = await window.heic2any({ blob: file, toType: 'image/jpeg', quality: 0.92 });
+  } catch (err) {
+    throw new Error('לא הצלחנו לקרוא קובץ HEIC');
+  }
+  const blobs = (Array.isArray(out) ? out : [out]).filter(Boolean);
+  if (!blobs.length) throw new Error('לא הצלחנו לקרוא קובץ HEIC');
+  const canvases = [];
+  for (const blob of blobs) canvases.push(imageToCanvas(await blobToImage(blob)));
+  return canvases;
+}
+
+async function tiffToCanvases(file) {
+  if (!window.UTIF) {
+    await loadScript('https://cdn.jsdelivr.net/npm/utif@3.1.0/UTIF.js');
+  }
+  const buf = await file.arrayBuffer();
+  const ifds = window.UTIF.decode(buf);
+  if (!ifds || !ifds.length) throw new Error('קובץ TIFF ריק');
+  const canvases = [];
+  for (const ifd of ifds) {
+    window.UTIF.decodeImage(buf, ifd);
+    const rgba = window.UTIF.toRGBA8(ifd);
+    if (!ifd.width || !ifd.height) continue;
+    const canvas = document.createElement('canvas');
+    canvas.width = ifd.width;
+    canvas.height = ifd.height;
+    const ctx = canvas.getContext('2d');
+    const imageData = ctx.createImageData(ifd.width, ifd.height);
+    imageData.data.set(rgba);
+    ctx.putImageData(imageData, 0, 0);
+    canvases.push(canvas);
+  }
+  if (!canvases.length) throw new Error('קובץ TIFF ריק');
+  return canvases;
+}
+
+async function fileToCanvases(file) {
+  const type = (file.type || '').toLowerCase();
+  const name = (file.name || '').toLowerCase();
+  if (type === 'application/pdf' || name.endsWith('.pdf')) return pdfToCanvases(file);
+  if (type === 'image/tiff' || type === 'image/tif' || name.endsWith('.tif') || name.endsWith('.tiff')) {
+    return tiffToCanvases(file);
+  }
+  if (isHeic(file)) return heicToCanvases(file);
+  try {
+    return [imageToCanvas(await blobToImage(file))];
+  } catch (err) {
+    throw new Error('פורמט לא נתמך או קובץ פגום');
+  }
+}
+
+function canvasToBlob(canvas, type, quality) {
+  return new Promise(resolve => canvas.toBlob(resolve, type, quality));
+}
+
+async function canvasToIdPage(source, filename) {
+  const enhanced = enhanceForReadability(source);
+  const pdfDataUrl = enhanced.toDataURL('image/jpeg', 0.9);
+  const ocrCanvas = downscaleCanvas(enhanced, 1600);
+  const ocrBase64 = ocrCanvas.toDataURL('image/jpeg', 0.82).split(',')[1];
+  const thumb = downscaleCanvas(enhanced, 360);
+  const thumbBlob = await canvasToBlob(thumb, 'image/jpeg', 0.8);
+  const thumbUrl = URL.createObjectURL(thumbBlob || new Blob());
+  return { id: idPageSeq++, filename, pdfDataUrl, ocrBase64, thumbUrl };
+}
+
+async function buildIdPdf(dataUrls) {
+  if (!window.jspdf || !window.jspdf.jsPDF) throw new Error('ספריית PDF לא זמינה');
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4', compress: true });
+  const pw = pdf.internal.pageSize.getWidth();
+  const ph = pdf.internal.pageSize.getHeight();
+  const margin = 8;
+  for (let i = 0; i < dataUrls.length; i++) {
+    if (i) pdf.addPage();
+    const props = pdf.getImageProperties(dataUrls[i]);
+    const maxW = pw - margin * 2;
+    const maxH = ph - margin * 2;
+    const ratio = Math.min(maxW / props.width, maxH / props.height);
+    const w = props.width * ratio;
+    const h = props.height * ratio;
+    pdf.addImage(dataUrls[i], 'JPEG', (pw - w) / 2, (ph - h) / 2, w, h, undefined, 'FAST');
+  }
+  return pdf.output('datauristring').split(',')[1];
+}
+
+function renderIdPages() {
+  const wrap = document.getElementById('id-pages');
+  wrap.replaceChildren();
+  idPages.forEach((page, i) => {
+    const fig = document.createElement('figure');
+    fig.className = 'id-page';
+    const img = document.createElement('img');
+    img.src = page.thumbUrl;
+    img.alt = `עמוד ${i + 1}`;
+    const cap = document.createElement('figcaption');
+    cap.textContent = `עמוד ${i + 1}`;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-ghost btn-small';
+    btn.textContent = 'הסר';
+    const pageId = page.id;
+    btn.addEventListener('click', () => enqueueIdWork(() => removeIdPage(pageId)));
+    fig.append(img, cap, btn);
+    wrap.appendChild(fig);
+  });
+  document.getElementById('id-preview-wrapper').classList.toggle('hidden', idPages.length === 0);
+}
+
+function releaseIdPages() {
+  idPages.forEach(page => URL.revokeObjectURL(page.thumbUrl));
+  idPages = [];
+}
+
+function clearIdPages() {
+  idJobToken++;
+  releaseIdPages();
+  idFileData = null;
+  idExtractedData = null;
+  renderIdPages();
+  const statusEl = document.getElementById('ocr-status');
+  statusEl.classList.add('hidden');
+  statusEl.textContent = '';
+}
+
+async function removeIdPage(pageId) {
+  const index = idPages.findIndex(page => page.id === pageId);
+  if (index < 0) return;
+  const [removed] = idPages.splice(index, 1);
+  if (removed) URL.revokeObjectURL(removed.thumbUrl);
+  renderIdPages();
+  await rebuildAndExtract();
+}
+
+async function extractIdData(images, token, note) {
+  setOcrStatus('loading', `מזהה פרטים מ-${images.length === 1 ? 'עמוד אחד' : images.length + ' עמודים'}...`);
+  try {
+    const res = await fetch('/api/extract-id', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ imageBase64: base64 }),
+      body: JSON.stringify({ images }),
     });
-    const result = await res.json();
+    const result = await res.json().catch(() => ({}));
+    if (token !== idJobToken) return;
+    const suffix = note ? ` ${note}` : '';
     if (result.success && result.data) {
       idExtractedData = result.data;
-      const filled = Object.values(result.data).filter(v => v && v.trim()).length;
-      statusEl.className = 'ocr-status ocr-success';
-      statusEl.textContent = `✓ זוהו ${filled} שדות – יופיעו במסך הפרטים לעריכה`;
+      const filled = ID_FIELD_KEYS.filter(key => String(result.data[key] || '').trim()).length;
+      if (filled > 0) {
+        setOcrStatus('success', `זוהו ${filled} שדות. אפשר לערוך אותם במסך הבא.${suffix}`);
+      } else {
+        setOcrStatus('warn', `לא זוהו פרטים בתעודה. אפשר להמשיך ולמלא ידנית.${suffix}`);
+      }
     } else {
-      statusEl.className = 'ocr-status ocr-warn';
-      statusEl.textContent = `שגיאה: ${result.message || 'לא ידוע'}`;
+      setOcrStatus('warn', `${friendlyOcrError(result.message)}${suffix}`);
     }
   } catch (err) {
-    statusEl.className = 'ocr-status ocr-warn';
-    statusEl.textContent = `שגיאה בשליחה: ${err.message}`;
+    if (token !== idJobToken) return;
     console.error('fetch error:', err);
+    setOcrStatus('warn', `לא הצלחנו לזהות את הפרטים אוטומטית. אפשר להמשיך ולמלא ידנית.${note ? ` ${note}` : ''}`);
   }
+}
+
+async function rebuildAndExtract(problems = []) {
+  if (!idPages.length) {
+    idJobToken++;
+    idFileData = null;
+    idExtractedData = null;
+    const statusEl = document.getElementById('ocr-status');
+    if (problems.length) {
+      setOcrStatus('warn', `לא הצלחנו לקרוא את הקבצים. ${problems.join(' · ')} אפשר להמשיך ולמלא את הפרטים ידנית.`);
+    } else {
+      statusEl.classList.add('hidden');
+      statusEl.textContent = '';
+    }
+    return;
+  }
+
+  const token = ++idJobToken;
+  setOcrStatus('loading', 'משפר חדות ובונה מסמך אחד קריא...');
+  await yieldToUi();
+  try {
+    const pdfB64 = await buildIdPdf(idPages.map(page => page.pdfDataUrl));
+    if (token !== idJobToken) return;
+    idFileData = { base64: pdfB64, mimeType: 'application/pdf', filename: 'תעודת-זהות.pdf' };
+  } catch (err) {
+    console.error(err);
+    if (token !== idJobToken) return;
+    const fallback = (idPages[0].pdfDataUrl || '').split(',')[1] || '';
+    idFileData = fallback
+      ? { base64: fallback, mimeType: 'image/jpeg', filename: 'תעודת-זהות.jpg' }
+      : null;
+  }
+  const note = problems.length ? `(${problems.join(' · ')})` : '';
+  await extractIdData(idPages.map(page => page.ocrBase64), token, note);
+}
+
+async function addIdFiles(files) {
+  const problems = [];
+  let added = 0;
+  for (let i = 0; i < files.length; i++) {
+    if (idPages.length >= MAX_ID_PAGES) {
+      problems.push(`אפשר עד ${MAX_ID_PAGES} עמודים`);
+      break;
+    }
+    const file = files[i];
+    const label = file.name || 'תמונה';
+    setOcrStatus('loading', `קורא קובץ ${i + 1} מתוך ${files.length}: ${label}`);
+    await yieldToUi();
+    try {
+      if (file.size > MAX_ID_FILE_BYTES) throw new Error('הקובץ גדול מדי');
+      const canvases = await fileToCanvases(file);
+      if (canvases.truncated) problems.push(`נקראו ${canvases.length} העמודים הראשונים מתוך ${canvases.truncated}`);
+      for (const canvas of canvases) {
+        if (idPages.length >= MAX_ID_PAGES) {
+          problems.push(`אפשר עד ${MAX_ID_PAGES} עמודים`);
+          break;
+        }
+        const page = await canvasToIdPage(canvas, label);
+        canvas.width = 0;
+        canvas.height = 0;
+        idPages.push(page);
+        added++;
+        renderIdPages();
+        await yieldToUi();
+      }
+    } catch (err) {
+      problems.push(`${label}: ${err.message || 'לא נקרא'}`);
+    }
+  }
+  renderIdPages();
+  if (!added && !idPages.length) {
+    setOcrStatus('warn', `לא הצלחנו לקרוא את הקבצים. ${problems.join(' · ')} אפשר להמשיך ולמלא את הפרטים ידנית.`);
+    return;
+  }
+  await rebuildAndExtract(problems);
 }
 
 function prefillFromId() {
   if (!idExtractedData) return;
   const d = idExtractedData;
-  if (d.firstName)   document.getElementById('firstName').value   = d.firstName;
-  if (d.lastName)    document.getElementById('lastName').value    = d.lastName;
-  if (d.idNumber)    document.getElementById('idNumber').value    = d.idNumber;
-  if (d.birthDate)   document.getElementById('birthDate').value   = d.birthDate;
-  if (d.idIssueDate) document.getElementById('idIssueDate').value = d.idIssueDate;
-  if (d.address)     document.getElementById('address').value     = d.address;
+  ['firstName','lastName','idNumber','birthDate','idIssueDate','street','houseNumber','apartment','city','zip'].forEach(name => {
+    const el = document.getElementById(name);
+    if (el && d[name]) el.value = d[name];
+  });
+  const gender = document.getElementById('gender');
+  if (gender && (d.gender === '1' || d.gender === '2')) gender.value = d.gender;
 }
 
 function initStep0() {
@@ -129,66 +560,30 @@ function initStep0() {
     document.getElementById('id-camera-input').click());
 
   ['id-file-input', 'id-camera-input'].forEach(id => {
-    document.getElementById(id).addEventListener('change', async e => {
-      const file = e.target.files[0];
-      if (!file) return;
-      const statusEl = document.getElementById('ocr-status');
-      const preview  = document.getElementById('id-preview');
-      document.getElementById('id-preview-wrapper').classList.remove('hidden');
-
-      // שמירת הקובץ המקורי לצרופה במייל
-      const reader = new FileReader();
-      reader.onload = ev => {
-        idFileData = {
-          base64:   ev.target.result.split(',')[1],
-          mimeType: file.type || 'image/jpeg',
-          filename: file.name || 'תעודת-זהות',
-        };
-      };
-      reader.readAsDataURL(file);
-
-      let base64;
-      if (file.type === 'application/pdf') {
-        statusEl.className = 'ocr-status ocr-loading';
-        statusEl.textContent = 'ממיר PDF לתמונה...';
-        statusEl.classList.remove('hidden');
-        try {
-          base64 = await renderPdfToBase64(file);
-          preview.src = 'data:image/jpeg;base64,' + base64;
-        } catch (err) {
-          statusEl.className = 'ocr-status ocr-warn';
-          statusEl.textContent = `שגיאה בקריאת ה-PDF: ${err.message}`;
-          return;
-        }
-      } else {
-        preview.src = URL.createObjectURL(file);
-        try {
-          base64 = await compressImage(file);
-        } catch (err) {
-          statusEl.className = 'ocr-status ocr-warn';
-          statusEl.textContent = `שגיאה בהכנת התמונה: ${err.message}`;
-          statusEl.classList.remove('hidden');
-          return;
-        }
-      }
-      extractIdData(base64);
+    document.getElementById(id).addEventListener('change', e => {
+      const files = Array.from(e.target.files || []);
+      e.target.value = '';
+      if (!files.length) return;
+      enqueueIdWork(() => addIdFiles(files));
     });
   });
 
   document.getElementById('remove-id-btn').addEventListener('click', () => {
-    document.getElementById('id-preview-wrapper').classList.add('hidden');
-    document.getElementById('ocr-status').classList.add('hidden');
-    document.getElementById('id-file-input').value   = '';
-    document.getElementById('id-camera-input').value = '';
-    idExtractedData = null;
-    idFileData      = null;
+    enqueueIdWork(async () => { clearIdPages(); });
   });
 
-  document.getElementById('intro-continue-btn').addEventListener('click', () => {
-    document.getElementById('step-0').classList.add('hidden');
-    document.querySelector('.progress-bar-wrapper').classList.remove('hidden');
-    prefillFromId();
-    goToStep(1);
+  document.getElementById('intro-continue-btn').addEventListener('click', async () => {
+    const btn = document.getElementById('intro-continue-btn');
+    btn.disabled = true;
+    try {
+      await idPipeline;
+      document.getElementById('step-0').classList.add('hidden');
+      document.querySelector('.progress-bar-wrapper').classList.remove('hidden');
+      prefillFromId();
+      goToStep(1);
+    } finally {
+      btn.disabled = false;
+    }
   });
 }
 
@@ -216,6 +611,7 @@ const rules = {
   phone:       v => /^0\d{1,2}[-\s]?\d{7}$/.test(v.trim()) ? null : 'מספר טלפון לא תקין',
   email:       v => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim()) ? null : 'כתובת אימייל לא תקינה',
   birthDate:   v => v ? null : 'יש לבחור תאריך לידה',
+  zip:         v => !String(v || '').trim() || /^\d{5}(\d{2})?$/.test(String(v).trim()) ? null : 'מיקוד צריך להיות 5 או 7 ספרות',
 };
 
 function showError(input, msg) {
@@ -512,6 +908,11 @@ document.getElementById('personal-form').addEventListener('submit', e => {
     document.querySelector('input.error')?.focus();
     return;
   }
+  const street = document.getElementById('street').value.trim();
+  const houseNumber = document.getElementById('houseNumber').value.trim();
+  const apartment = document.getElementById('apartment').value.trim();
+  const city = document.getElementById('city').value.trim();
+  const zip = document.getElementById('zip').value.trim();
   formData = {
     firstName:   document.getElementById('firstName').value.trim(),
     lastName:    document.getElementById('lastName').value.trim(),
@@ -520,8 +921,13 @@ document.getElementById('personal-form').addEventListener('submit', e => {
     email:       document.getElementById('email').value.trim(),
     birthDate:   formatDate(document.getElementById('birthDate').value),
     idIssueDate: formatDate(document.getElementById('idIssueDate').value),
-    address:     document.getElementById('address').value.trim(),
-    gender:      idExtractedData?.gender || '1',
+    street,
+    houseNumber,
+    apartment,
+    city,
+    zip,
+    address:     composeAddress({ street, houseNumber, apartment, city, zip }),
+    gender:      document.getElementById('gender').value || idExtractedData?.gender || '1',
     passport:    document.querySelector('input[name="passport"]:checked')?.value || 'לא',
     travel:      document.querySelector('input[name="travel"]:checked')?.value  || 'לא',
   };
