@@ -88,18 +88,19 @@ form { padding: 28px 36px 8px; }
 label { font-size: 13px; font-weight: 600; color: var(--g800); }
 .required { color: var(--red); }
 
-input[type="text"], input[type="email"], input[type="tel"], input[type="date"] {
+input[type="text"], input[type="email"], input[type="tel"], input[type="date"], select {
   border: 2px solid var(--g200); border-radius: 8px; padding: 11px 14px;
   font-size: 15px; font-family: inherit; color: var(--g800);
   background: var(--white); transition: var(--t); direction: rtl; width: 100%;
 }
+.address-heading { font-size: 14px; font-weight: 700; color: var(--navy); margin: 2px 0 0; }
 input[type="date"] { direction: ltr; text-align: left; }
 input[type="date"]::-webkit-datetime-edit          { display: flex; flex-direction: row; }
 input[type="date"]::-webkit-datetime-edit-day-field   { order: 1; }
 input[type="date"]::-webkit-datetime-edit-month-field { order: 2; }
 input[type="date"]::-webkit-datetime-edit-year-field  { order: 3; }
 input[type="date"]::-webkit-datetime-edit-text        { order: 2; }
-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(15,52,96,.12); }
+input:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(15,52,96,.12); }
 input.error { border-color: var(--red); box-shadow: 0 0 0 3px rgba(233,69,96,.12); }
 .field-error { font-size: 12px; color: var(--red); min-height: 16px; display: block; }
 
@@ -179,12 +180,16 @@ input.error { border-color: var(--red); box-shadow: 0 0 0 3px rgba(233,69,96,.12
   padding: 24px 20px; background: var(--g100); text-align: center;
 }
 .id-upload-buttons { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+.id-upload-hint { margin: 12px 0 0; font-size: 12px; color: var(--g600); line-height: 1.5; }
 .id-preview-wrapper { margin-top: 16px; }
-#id-preview {
-  max-width: 100%; max-height: 230px; border-radius: var(--r);
-  border: 1px solid var(--g400); display: block; margin: 0 auto 10px;
-  object-fit: contain;
+.id-pages { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-bottom: 12px; }
+.id-page {
+  width: 112px; margin: 0; background: white; border: 1px solid var(--g400);
+  border-radius: 8px; padding: 6px; display: flex; flex-direction: column; gap: 4px;
 }
+.id-page img { width: 100%; height: 84px; object-fit: contain; background: #fff; border-radius: 4px; }
+.id-page figcaption { font-size: 11px; color: var(--g600); }
+.id-page .btn { justify-content: center; }
 
 .ocr-status {
   margin-top: 14px; padding: 10px 16px;
