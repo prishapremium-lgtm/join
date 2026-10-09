@@ -881,28 +881,35 @@ async function captureDocPanel(panelId) {
   const origMax      = el.style.maxHeight;
   const origOverflow = el.style.overflow;
 
+  const notes = [...el.querySelectorAll('.doc-note')];
+  const noteDisplay = notes.map(note => note.style.display);
+
   el.classList.remove('hidden');   // הסר לפני הצילום — hidden כולל !important
   el.style.maxHeight = 'none';
   el.style.overflow  = 'visible';
   el.classList.add('active');
+  // הערות ההסבר מעל הטופס נשארות במסך, אבל לא נכנסות ל-PDF
+  notes.forEach(note => { note.style.display = 'none'; });
 
   await new Promise(r => setTimeout(r, 120));
 
-  const canvas = await html2canvas(el, {
-    scale: 2.5,
-    useCORS: true,
-    allowTaint: true,
-    backgroundColor: '#ffffff',
-    logging: false,
-    windowWidth: Math.max(el.scrollWidth + 2, 750),
-  });
-
-  el.style.maxHeight = origMax;
-  el.style.overflow  = origOverflow;
-  if (!wasActive) el.classList.remove('active');
-  if (wasHidden)  el.classList.add('hidden');    // שחזר מצב מקורי
-
-  return canvas;
+  try {
+    return await html2canvas(el, {
+      scale: 2.5,
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: '#ffffff',
+      logging: false,
+      windowWidth: Math.max(el.scrollWidth + 2, 750),
+      ignoreElements: (node) => !!(node.classList && node.classList.contains('doc-note')),
+    });
+  } finally {
+    notes.forEach((note, i) => { note.style.display = noteDisplay[i]; });
+    el.style.maxHeight = origMax;
+    el.style.overflow  = origOverflow;
+    if (!wasActive) el.classList.remove('active');
+    if (wasHidden)  el.classList.add('hidden');    // שחזר מצב מקורי
+  }
 }
 
 // ── Generate combined PDF ─────────────────────────────────
