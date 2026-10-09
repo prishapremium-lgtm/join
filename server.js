@@ -164,28 +164,29 @@ function escapeHtml(value) {
 }
 
 function documentNamesHtml(docs) {
-  if (!docs.length) return '<p style="margin:0;color:#6f5c3b;">אין</p>';
+  if (!docs.length) return '<p style="margin:0;color:#666;">אין</p>';
   const items = docs.map(doc => `<li style="margin:0 0 4px;">${escapeHtml(doc.name)}</li>`).join('');
   return `<ul style="margin:0;padding:0 18px 0 0;">${items}</ul>`;
 }
 
 function renderDocumentSelectionHtml(selection, audience) {
   const selected = documentNamesHtml(selection.selected);
+  const box = 'background:#f7eef0;border-right:4px solid #7a1f2b;padding:15px;margin:20px 0;border-radius:4px;';
   if (audience === 'client') {
     return `
-      <div style="background:#fdf9f1;border-right:3px solid #bfa77a;padding:14px 16px;margin:16px 0;border-radius:12px;">
-        <p style="margin:0 0 8px;font-weight:700;color:#5e1218;">המסמכים החתומים המצורפים</p>
+      <div style="${box}">
+        <p style="margin:0 0 8px;font-weight:bold;">המסמכים החתומים המצורפים</p>
         ${selected}
       </div>`;
   }
   const deselected = selection.deselected.length
     ? documentNamesHtml(selection.deselected)
-    : '<p style="margin:0;color:#6f5c3b;">הלקוח חתם על כל המסמכים.</p>';
+    : '<p style="margin:0;color:#666;">הלקוח חתם על כל המסמכים.</p>';
   return `
-    <div style="background:#fdf9f1;border:1px solid #e5cf9f;border-radius:12px;padding:14px 16px;margin-top:18px;">
-      <p style="margin:0 0 8px;font-weight:700;color:#5e1218;">מסמכים שנחתמו</p>
+    <div style="${box}">
+      <p style="margin:0 0 8px;font-weight:bold;">מסמכים שנחתמו</p>
       ${selected}
-      <p style="margin:12px 0 8px;font-weight:700;color:#5e1218;">מסמכים שלא סומנו</p>
+      <p style="margin:12px 0 8px;font-weight:bold;">מסמכים שלא סומנו</p>
       ${deselected}
     </div>`;
 }
@@ -197,25 +198,21 @@ async function sendEmails(client, pdfBuffer, idFile, selection = resolveDocument
   const pdfName = `הצטרפות-${first}-${last}.pdf`;
 
   const clientHtml = `
-<div dir="rtl" style="font-family:Heebo,Arial,sans-serif;max-width:640px;margin:0 auto;background:#f3ecdf;padding:28px 16px;">
-  <div style="background:#ffffff;border:1px solid #d9c7a2;border-radius:20px;overflow:hidden;">
-    <div style="padding:32px 32px 4px;text-align:center;">
-      <div style="color:#bfa77a;font-size:11px;line-height:1;">◆</div>
-      <h1 style="margin:10px 0 0;font-family:Georgia,'Times New Roman',serif;font-size:28px;font-weight:700;color:#5e1218;line-height:1.3;">${COMPANY}</h1>
-      <div style="width:64px;height:2px;background:#bfa77a;margin:14px auto 10px;border-radius:2px;"></div>
-      <p style="margin:0;color:#6f5c3b;font-size:14px;">אישור הצטרפות</p>
+<div dir="rtl" style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+  <div style="background:linear-gradient(135deg,#5e1218,#7a1f2b);color:white;padding:30px;text-align:center;border-radius:8px 8px 0 0;">
+    <h1 style="margin:0;font-size:24px;">${COMPANY}</h1>
+    <p style="margin:8px 0 0;opacity:.8;">אישור הצטרפות</p>
+  </div>
+  <div style="background:#fff;padding:30px;border:1px solid #eee;border-radius:0 0 8px 8px;">
+    <p style="font-size:16px;">שלום <strong>${first} ${last}</strong>,</p>
+    <p>תודה על הצטרפותך ל${COMPANY}! אנחנו שמחים לקבל אותך.</p>
+    <p>טופס ההצטרפות החתום מצורף לאימייל זה כקובץ PDF.</p>
+    ${renderDocumentSelectionHtml(selection, 'client')}
+    <div style="background:#f7eef0;border-right:4px solid #7a1f2b;padding:15px;margin:20px 0;border-radius:4px;">
+      <p style="margin:0;font-weight:bold;">מה קורה עכשיו?</p>
+      <p style="margin:8px 0 0;">אנו פונים כעת לגופים הרלוונטיים (קרנות פנסיה, קופות גמל ועוד) לקבלת המידע המלא אודות חסכונותיך ונכסיך. נחזור אליך עם תמונה מלאה בהקדם האפשרי.</p>
     </div>
-    <div style="padding:18px 32px 32px;color:#231b1c;font-size:15px;line-height:1.75;">
-      <p style="font-size:16px;margin:0 0 12px;">שלום <strong>${first} ${last}</strong>,</p>
-      <p style="margin:0 0 12px;">תודה על הצטרפותך ל${COMPANY}! אנחנו שמחים לקבל אותך.</p>
-      <p style="margin:0 0 12px;">טופס ההצטרפות החתום מצורף לאימייל זה כקובץ PDF.</p>
-      ${renderDocumentSelectionHtml(selection, 'client')}
-      <div style="background:#fdf9f1;border-right:3px solid #bfa77a;padding:14px 16px;margin:20px 0;border-radius:12px;">
-        <p style="margin:0;font-weight:700;color:#5e1218;">מה קורה עכשיו?</p>
-        <p style="margin:8px 0 0;color:#231b1c;">אנו פונים כעת לגופים הרלוונטיים (קרנות פנסיה, קופות גמל ועוד) לקבלת המידע המלא אודות חסכונותיך ונכסיך. נחזור אליך עם תמונה מלאה בהקדם האפשרי.</p>
-      </div>
-      <p style="margin:0;">בברכה,<br><strong style="color:#5e1218;">צוות ${COMPANY}</strong></p>
-    </div>
+    <p>בברכה,<br><strong>צוות ${COMPANY}</strong></p>
   </div>
 </div>`;
 
@@ -230,23 +227,19 @@ async function sendEmails(client, pdfBuffer, idFile, selection = resolveDocument
   const addressLine = String(client.address || '').trim() || composeAddress(client);
   if (addressLine) rows.push(['כתובת', addressLine]);
   const rowsHtml = rows.map(([label, value], i) => {
-    const bg = i % 2 === 0 ? '#fdf9f1' : '#ffffff';
-    return `<tr><td style="padding:10px 12px;background:${bg};font-weight:700;width:40%;color:#5e1218;border-bottom:1px solid #efe5d5;">${label}:</td><td style="padding:10px 12px;background:${bg};color:#231b1c;border-bottom:1px solid #efe5d5;">${value}</td></tr>`;
+    const bg = i % 2 === 0 ? '#f8f9fa' : 'white';
+    return `<tr><td style="padding:8px;background:${bg};font-weight:bold;width:40%;">${label}:</td><td style="padding:8px;">${value}</td></tr>`;
   }).join('');
 
   const adminHtml = `
-<div dir="rtl" style="font-family:Heebo,Arial,sans-serif;max-width:640px;margin:0 auto;background:#f3ecdf;padding:28px 16px;">
-  <div style="background:#ffffff;border:1px solid #d9c7a2;border-radius:20px;overflow:hidden;">
-    <div style="padding:28px 28px 6px;text-align:center;">
-      <div style="color:#bfa77a;font-size:11px;line-height:1;">◆</div>
-      <h2 style="margin:10px 0 0;font-family:Georgia,'Times New Roman',serif;font-size:24px;font-weight:700;color:#5e1218;">לקוח חדש הצטרף!</h2>
-      <div style="width:64px;height:2px;background:#bfa77a;margin:12px auto 0;border-radius:2px;"></div>
-    </div>
-    <div style="padding:18px 28px 28px;">
-      <table style="width:100%;border-collapse:collapse;font-size:14px;">${rowsHtml}</table>
-      <p style="margin:18px 0 0;color:#6f5c3b;font-size:13px;">טופס ההצטרפות החתום מצורף.</p>
-      ${renderDocumentSelectionHtml(selection, 'admin')}
-    </div>
+<div dir="rtl" style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+  <div style="background:#5e1218;color:white;padding:20px;text-align:center;border-radius:8px 8px 0 0;">
+    <h2 style="margin:0;">לקוח חדש הצטרף!</h2>
+  </div>
+  <div style="background:#fff;padding:25px;border:1px solid #eee;border-radius:0 0 8px 8px;">
+    <table style="width:100%;border-collapse:collapse;">${rowsHtml}</table>
+    <p style="margin-top:20px;color:#666;font-size:13px;">טופס ההצטרפות החתום מצורף.</p>
+    ${renderDocumentSelectionHtml(selection, 'admin')}
   </div>
 </div>`;
 
