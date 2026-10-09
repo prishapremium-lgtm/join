@@ -43,6 +43,36 @@ const ROETO_CLIENT_ID = process.env.ROETO_CLIENT_ID || CFG.roeto_client_id || ''
 const ROETO_CLIENT_SECRET = process.env.ROETO_CLIENT_SECRET || CFG.roeto_client_secret || '';
 const INTEGRATION_TIMEOUT_MS = 20000;
 
+// Staging is opt-in. An unset APP_ENV (production) must not change
+// subjects, HTML, or response headers.
+const STAGING_ROBOTS = 'noindex, nofollow';
+
+function isStagingEnv(appEnv = process.env.APP_ENV) {
+  return appEnv === 'staging';
+}
+
+function emailSubject(subject, appEnv = process.env.APP_ENV) {
+  return isStagingEnv(appEnv) ? `[בדיקה] ${subject}` : subject;
+}
+
+function applyStagingDocument(html, appEnv = process.env.APP_ENV) {
+  if (!isStagingEnv(appEnv)) return html;
+  let out = html;
+  if (!/name=["']robots["']/i.test(out)) {
+    out = out.replace(
+      /<head(\s[^>]*)?>/i,
+      (match) => `${match}\n  <meta name="robots" content="${STAGING_ROBOTS}" />`,
+    );
+  }
+  if (!out.includes('class="env-banner"')) {
+    out = out.replace(
+      '<header class="app-header">',
+      '<header class="app-header">\n    <div class="env-banner" role="status">סביבת בדיקה</div>',
+    );
+  }
+  return out;
+}
+
 // ── Mailer via Resend HTTPS API ──────────────────────────
 // Railway blocks outbound Gmail SMTP; Resend works over HTTPS.
 // Custom domain not verified yet — send from onboarding@resend.dev.
@@ -107,20 +137,24 @@ async function sendEmails(client, pdfBuffer, idFile) {
   const pdfName = `הצטרפות-${first}-${last}.pdf`;
 
   const clientHtml = `
-<div dir="rtl" style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
-  <div style="background:linear-gradient(135deg,#1a1a2e,#0f3460);color:white;padding:30px;text-align:center;border-radius:8px 8px 0 0;">
-    <h1 style="margin:0;font-size:24px;">${COMPANY}</h1>
-    <p style="margin:8px 0 0;opacity:.8;">אישור הצטרפות</p>
-  </div>
-  <div style="background:#fff;padding:30px;border:1px solid #eee;border-radius:0 0 8px 8px;">
-    <p style="font-size:16px;">שלום <strong>${first} ${last}</strong>,</p>
-    <p>תודה על הצטרפותך ל${COMPANY}! אנחנו שמחים לקבל אותך.</p>
-    <p>טופס ההצטרפות החתום מצורף לאימייל זה כקובץ PDF.</p>
-    <div style="background:#f0f7ff;border-right:4px solid #0f3460;padding:15px;margin:20px 0;border-radius:4px;">
-      <p style="margin:0;font-weight:bold;">מה קורה עכשיו?</p>
-      <p style="margin:8px 0 0;">אנו פונים כעת לגופים הרלוונטיים (קרנות פנסיה, קופות גמל ועוד) לקבלת המידע המלא אודות חסכונותיך ונכסיך. נחזור אליך עם תמונה מלאה בהקדם האפשרי.</p>
+<div dir="rtl" style="font-family:Heebo,Arial,sans-serif;max-width:640px;margin:0 auto;background:#f3ecdf;padding:28px 16px;">
+  <div style="background:#ffffff;border:1px solid #d9c7a2;border-radius:20px;overflow:hidden;">
+    <div style="padding:32px 32px 4px;text-align:center;">
+      <div style="color:#bfa77a;font-size:11px;line-height:1;">◆</div>
+      <h1 style="margin:10px 0 0;font-family:Georgia,'Times New Roman',serif;font-size:28px;font-weight:700;color:#5e1218;line-height:1.3;">${COMPANY}</h1>
+      <div style="width:64px;height:2px;background:#bfa77a;margin:14px auto 10px;border-radius:2px;"></div>
+      <p style="margin:0;color:#6f5c3b;font-size:14px;">אישור הצטרפות</p>
     </div>
-    <p>בברכה,<br><strong>צוות ${COMPANY}</strong></p>
+    <div style="padding:18px 32px 32px;color:#231b1c;font-size:15px;line-height:1.75;">
+      <p style="font-size:16px;margin:0 0 12px;">שלום <strong>${first} ${last}</strong>,</p>
+      <p style="margin:0 0 12px;">תודה על הצטרפותך ל${COMPANY}! אנחנו שמחים לקבל אותך.</p>
+      <p style="margin:0 0 12px;">טופס ההצטרפות החתום מצורף לאימייל זה כקובץ PDF.</p>
+      <div style="background:#fdf9f1;border-right:3px solid #bfa77a;padding:14px 16px;margin:20px 0;border-radius:12px;">
+        <p style="margin:0;font-weight:700;color:#5e1218;">מה קורה עכשיו?</p>
+        <p style="margin:8px 0 0;color:#231b1c;">אנו פונים כעת לגופים הרלוונטיים (קרנות פנסיה, קופות גמל ועוד) לקבלת המידע המלא אודות חסכונותיך ונכסיך. נחזור אליך עם תמונה מלאה בהקדם האפשרי.</p>
+      </div>
+      <p style="margin:0;">בברכה,<br><strong style="color:#5e1218;">צוות ${COMPANY}</strong></p>
+    </div>
   </div>
 </div>`;
 
@@ -135,18 +169,22 @@ async function sendEmails(client, pdfBuffer, idFile) {
   const addressLine = String(client.address || '').trim() || composeAddress(client);
   if (addressLine) rows.push(['כתובת', addressLine]);
   const rowsHtml = rows.map(([label, value], i) => {
-    const bg = i % 2 === 0 ? '#f8f9fa' : 'white';
-    return `<tr><td style="padding:8px;background:${bg};font-weight:bold;width:40%;">${label}:</td><td style="padding:8px;">${value}</td></tr>`;
+    const bg = i % 2 === 0 ? '#fdf9f1' : '#ffffff';
+    return `<tr><td style="padding:10px 12px;background:${bg};font-weight:700;width:40%;color:#5e1218;border-bottom:1px solid #efe5d5;">${label}:</td><td style="padding:10px 12px;background:${bg};color:#231b1c;border-bottom:1px solid #efe5d5;">${value}</td></tr>`;
   }).join('');
 
   const adminHtml = `
-<div dir="rtl" style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
-  <div style="background:#1a1a2e;color:white;padding:20px;text-align:center;border-radius:8px 8px 0 0;">
-    <h2 style="margin:0;">לקוח חדש הצטרף!</h2>
-  </div>
-  <div style="background:#fff;padding:25px;border:1px solid #eee;border-radius:0 0 8px 8px;">
-    <table style="width:100%;border-collapse:collapse;">${rowsHtml}</table>
-    <p style="margin-top:20px;color:#666;font-size:13px;">טופס ההצטרפות החתום מצורף.</p>
+<div dir="rtl" style="font-family:Heebo,Arial,sans-serif;max-width:640px;margin:0 auto;background:#f3ecdf;padding:28px 16px;">
+  <div style="background:#ffffff;border:1px solid #d9c7a2;border-radius:20px;overflow:hidden;">
+    <div style="padding:28px 28px 6px;text-align:center;">
+      <div style="color:#bfa77a;font-size:11px;line-height:1;">◆</div>
+      <h2 style="margin:10px 0 0;font-family:Georgia,'Times New Roman',serif;font-size:24px;font-weight:700;color:#5e1218;">לקוח חדש הצטרף!</h2>
+      <div style="width:64px;height:2px;background:#bfa77a;margin:12px auto 0;border-radius:2px;"></div>
+    </div>
+    <div style="padding:18px 28px 28px;">
+      <table style="width:100%;border-collapse:collapse;font-size:14px;">${rowsHtml}</table>
+      <p style="margin:18px 0 0;color:#6f5c3b;font-size:13px;">טופס ההצטרפות החתום מצורף.</p>
+    </div>
   </div>
 </div>`;
 
@@ -160,7 +198,7 @@ async function sendEmails(client, pdfBuffer, idFile) {
   if (email) {
     promises.push(resendSend({
       to:          email,
-      subject:     `אישור הצטרפות – ${COMPANY}`,
+      subject:     emailSubject(`אישור הצטרפות – ${COMPANY}`),
       html:        clientHtml,
       attachments: [pdfAttachment],
     }));
@@ -177,7 +215,7 @@ async function sendEmails(client, pdfBuffer, idFile) {
     }
     promises.push(resendSend({
       to:          adminTo,
-      subject:     `לקוח חדש: ${first} ${last}`,
+      subject:     emailSubject(`לקוח חדש: ${first} ${last}`),
       html:        adminHtml,
       attachments: adminAttachments,
     }));
@@ -738,6 +776,23 @@ app.use((req, res, next) => {
   res.setHeader('Cache-Control', 'no-store');
   next();
 });
+
+function sendIndex(_req, res, next) {
+  fs.readFile(path.join(__dirname, 'public', 'index.html'), 'utf8', (err, html) => {
+    if (err) return next(err);
+    res.type('html').send(applyStagingDocument(html));
+  });
+}
+
+if (isStagingEnv()) {
+  app.use((req, res, next) => {
+    res.setHeader('X-Robots-Tag', STAGING_ROBOTS);
+    next();
+  });
+  app.get('/', sendIndex);
+  app.get('/index.html', sendIndex);
+}
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.post('/api/extract-id', async (req, res) => {
@@ -808,6 +863,7 @@ if (require.main === module) {
     console.log(`  Server: ${COMPANY}`);
     console.log('====================================================');
     console.log(`  Port:  ${PORT}`);
+    console.log(`  Env:   ${isStagingEnv() ? 'staging' : 'production'}`);
     console.log(`  Admin: ${adminRecipients().join(', ')}`);
     console.log(`  URL:   http://localhost:${PORT}`);
     console.log('');
@@ -822,4 +878,7 @@ module.exports = {
   normalizeExtracted,
   resolveRoetoAddress,
   collectIdImages,
+  isStagingEnv,
+  emailSubject,
+  applyStagingDocument,
 };
