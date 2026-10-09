@@ -19,6 +19,9 @@ const {
   isStagingEnv,
   emailSubject,
   applyStagingDocument,
+  resolveDocumentSelection,
+  renderDocumentSelectionHtml,
+  buildMakePayload,
 } = require('../server');
 
 let server;
@@ -217,6 +220,64 @@ test('production index has no staging banner and no robots header', async () => 
   assert.equal(res.headers.get('x-robots-tag'), null);
   assert.equal(html.includes('סביבת בדיקה'), false);
   assert.equal(html.includes('name="robots"'), false);
+});
+
+test('document selection keeps every document unless the client removes some', () => {
+  const all = resolveDocumentSelection(undefined);
+  assert.deepEqual(all.selected.map(doc => doc.id), ['consent', 'pension', 'insurance', 'har']);
+  assert.deepEqual(all.deselected, []);
+  assert.equal(all.explicit, false);
+
+  const some = resolveDocumentSelection(['insurance', 'consent', 'insurance', 'unknown']);
+  assert.deepEqual(some.selected.map(doc => doc.name), ['הסכמת לקוח', 'ייפוי כח ביטוח']);
+  assert.deepEqual(some.deselected.map(doc => doc.id), ['pension', 'har']);
+  assert.equal(some.explicit, true);
+
+  const none = resolveDocumentSelection([]);
+  assert.equal(none.selected.length, 0);
+  assert.equal(none.deselected.length, 4);
+});
+
+test('admin email and Make payload list signed and unsigned documents', () => {
+  const selection = resolveDocumentSelection(['pension', 'har']);
+  const adminHtml = renderDocumentSelectionHtml(selection, 'admin');
+  assert.match(adminHtml, /מסמכים שנחתמו/);
+  assert.match(adminHtml, /מסמכים שלא סומנו/);
+  assert.match(adminHtml, /ייפוי כח פנסיוני/);
+  assert.match(adminHtml, /ייפוי כח להר הביטוח/);
+  assert.match(adminHtml, /הסכמת לקוח/);
+  assert.match(adminHtml, /ייפוי כח ביטוח/);
+
+  const clientHtml = renderDocumentSelectionHtml(selection, 'client');
+  assert.match(clientHtml, /המסמכים החתומים המצורפים/);
+  assert.match(clientHtml, /ייפוי כח פנסיוני/);
+  assert.doesNotMatch(clientHtml, /מסמכים שלא סומנו/);
+  assert.doesNotMatch(clientHtml, /הסכמת לקוח/);
+
+  const payload = buildMakePayload(
+    { firstName: 'ישראל', lastName: 'ישראלי', birthDate: '15/05/1980' },
+    'PDFDATA',
+    'הצטרפות.pdf',
+    selection,
+    '2026-10-09T00:00:00.000Z',
+  );
+  assert.deepEqual(payload.selectedDocuments, [
+    { id: 'pension', name: 'ייפוי כח פנסיוני' },
+    { id: 'har', name: 'ייפוי כח להר הביטוח' },
+  ]);
+  assert.deepEqual(payload.deselectedDocuments.map(doc => doc.id), ['consent', 'insurance']);
+  assert.equal(payload.pdfBase64, 'PDFDATA');
+  assert.equal(payload.birthDay, '15-05-1980');
+  assert.equal(payload.submittedAt, '2026-10-09T00:00:00.000Z');
+});
+
+test('submit rejects an empty document selection', async () => {
+  const res = await request('POST', '/api/submit', {
+    clientData: { firstName: 'ישראל', selectedDocumentIds: [] },
+    pdfBase64: Buffer.from('%PDF').toString('base64'),
+  });
+  assert.equal(res.status, 400);
+  assert.match(res.json.message, /לפחות מסמך אחד/);
 });
 
 test('submit still requires client data and the signed PDF', async () => {
