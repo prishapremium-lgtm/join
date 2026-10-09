@@ -2,7 +2,9 @@
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('fs');
 const http = require('http');
+const path = require('path');
 
 delete process.env.ANTHROPIC_KEY;
 
@@ -14,6 +16,9 @@ const {
   normalizeExtracted,
   resolveRoetoAddress,
   collectIdImages,
+  isStagingEnv,
+  emailSubject,
+  applyStagingDocument,
 } = require('../server');
 
 let server;
@@ -175,6 +180,43 @@ test('extract-id rejects an empty upload and fails softly without an API key', a
   assert.equal(noKey.status, 500);
   assert.match(noKey.json.message, /מפתח|לא הוגדר/);
   assert.equal(noKey.json.success, false);
+});
+
+test('email subjects stay plain unless APP_ENV is exactly staging', () => {
+  const client = 'אישור הצטרפות – פרישה פרימיום';
+  const admin = 'לקוח חדש: ישראל ישראלי';
+  assert.equal(isStagingEnv(undefined), false);
+  assert.equal(isStagingEnv(''), false);
+  assert.equal(isStagingEnv('production'), false);
+  assert.equal(isStagingEnv('Staging'), false);
+  assert.equal(isStagingEnv('staging'), true);
+  assert.equal(emailSubject(client, 'staging'), `[בדיקה] ${client}`);
+  assert.equal(emailSubject(admin, 'staging'), `[בדיקה] ${admin}`);
+  for (const env of [undefined, '', 'production', 'Staging']) {
+    assert.equal(emailSubject(client, env), client);
+    assert.equal(emailSubject(admin, env), admin);
+  }
+});
+
+test('staging chrome is injected only for APP_ENV=staging', () => {
+  const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
+  assert.equal(applyStagingDocument(html, undefined), html);
+  assert.equal(applyStagingDocument(html, 'production'), html);
+  const staging = applyStagingDocument(html, 'staging');
+  assert.match(staging, /<meta name="robots" content="noindex, nofollow" \/>/);
+  assert.match(staging, /<div class="env-banner" role="status">סביבת בדיקה<\/div>/);
+  assert.equal(applyStagingDocument(staging, 'staging'), staging);
+  assert.doesNotMatch(html, /env-banner|name="robots"/);
+});
+
+test('production index has no staging banner and no robots header', async () => {
+  const { port } = server.address();
+  const res = await fetch(`http://127.0.0.1:${port}/`);
+  const html = await res.text();
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('x-robots-tag'), null);
+  assert.equal(html.includes('סביבת בדיקה'), false);
+  assert.equal(html.includes('name="robots"'), false);
 });
 
 test('submit still requires client data and the signed PDF', async () => {
