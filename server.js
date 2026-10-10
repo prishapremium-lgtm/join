@@ -178,7 +178,7 @@ function documentNamesHtml(docs) {
 
 function renderDocumentSelectionHtml(selection, audience) {
   const selected = documentNamesHtml(selection.selected);
-  const box = 'background:#f7eef0;border-right:4px solid #7a1f2b;padding:15px;margin:20px 0;border-radius:4px;';
+  const box = 'background:#f7eef0;border-right:4px solid #9b3442;padding:15px;margin:20px 0;border-radius:4px;';
   if (audience === 'client') {
     return `
       <div style="${box}">
@@ -206,7 +206,7 @@ async function sendEmails(client, pdfBuffer, idFile, selection = resolveDocument
 
   const clientHtml = `
 <div dir="rtl" style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
-  <div style="background:linear-gradient(135deg,#5e1218,#7a1f2b);color:white;padding:30px;text-align:center;border-radius:8px 8px 0 0;">
+  <div style="background:linear-gradient(135deg,#7a1f2b,#9b3442);color:white;padding:30px;text-align:center;border-radius:8px 8px 0 0;">
     <h1 style="margin:0;font-size:24px;">${COMPANY}</h1>
     <p style="margin:8px 0 0;opacity:.8;">אישור הצטרפות</p>
   </div>
@@ -215,7 +215,7 @@ async function sendEmails(client, pdfBuffer, idFile, selection = resolveDocument
     <p>תודה על הצטרפותך ל${COMPANY}! אנחנו שמחים לקבל אותך.</p>
     <p>טופס ההצטרפות החתום מצורף לאימייל זה כקובץ PDF.</p>
     ${renderDocumentSelectionHtml(selection, 'client')}
-    <div style="background:#f7eef0;border-right:4px solid #7a1f2b;padding:15px;margin:20px 0;border-radius:4px;">
+    <div style="background:#f7eef0;border-right:4px solid #9b3442;padding:15px;margin:20px 0;border-radius:4px;">
       <p style="margin:0;font-weight:bold;">מה קורה עכשיו?</p>
       <p style="margin:8px 0 0;">אנו פונים כעת לגופים הרלוונטיים (קרנות פנסיה, קופות גמל ועוד) לקבלת המידע המלא אודות חסכונותיך ונכסיך. נחזור אליך עם תמונה מלאה בהקדם האפשרי.</p>
     </div>
@@ -240,7 +240,7 @@ async function sendEmails(client, pdfBuffer, idFile, selection = resolveDocument
 
   const adminHtml = `
 <div dir="rtl" style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
-  <div style="background:#5e1218;color:white;padding:20px;text-align:center;border-radius:8px 8px 0 0;">
+  <div style="background:#7a1f2b;color:white;padding:20px;text-align:center;border-radius:8px 8px 0 0;">
     <h2 style="margin:0;">לקוח חדש הצטרף!</h2>
   </div>
   <div style="background:#fff;padding:25px;border:1px solid #eee;border-radius:0 0 8px 8px;">
