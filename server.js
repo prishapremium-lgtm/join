@@ -55,6 +55,13 @@ function emailSubject(subject, appEnv = process.env.APP_ENV) {
   return isStagingEnv(appEnv) ? `[בדיקה] ${subject}` : subject;
 }
 
+function adminNewClientSubject(client = {}) {
+  const first = client.firstName || '';
+  const last = client.lastName || '';
+  const id = client.idNumber || '';
+  return `לקוח חדש: ${first} ${last} – ת.ז ${id}`;
+}
+
 function applyStagingDocument(html, appEnv = process.env.APP_ENV) {
   if (!isStagingEnv(appEnv)) return html;
   let out = html;
@@ -270,7 +277,7 @@ async function sendEmails(client, pdfBuffer, idFile, selection = resolveDocument
     }
     promises.push(resendSend({
       to:          adminTo,
-      subject:     emailSubject(`לקוח חדש: ${first} ${last}`),
+      subject:     emailSubject(adminNewClientSubject(client)),
       html:        adminHtml,
       attachments: adminAttachments,
     }));
@@ -950,6 +957,7 @@ module.exports = {
   collectIdImages,
   isStagingEnv,
   emailSubject,
+  adminNewClientSubject,
   applyStagingDocument,
   JOIN_DOCUMENTS,
   resolveDocumentSelection,

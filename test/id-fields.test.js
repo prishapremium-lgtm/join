@@ -18,6 +18,7 @@ const {
   collectIdImages,
   isStagingEnv,
   emailSubject,
+  adminNewClientSubject,
   applyStagingDocument,
   resolveDocumentSelection,
   renderDocumentSelectionHtml,
@@ -183,6 +184,19 @@ test('extract-id rejects an empty upload and fails softly without an API key', a
   assert.equal(noKey.status, 500);
   assert.match(noKey.json.message, /מפתח|לא הוגדר/);
   assert.equal(noKey.json.success, false);
+});
+
+test('admin new-client subject includes the client ID and keeps the staging prefix', () => {
+  const client = { firstName: 'ישראל', lastName: 'ישראלי', idNumber: '123456782' };
+  const subject = adminNewClientSubject(client);
+  const stagingSubject = emailSubject(subject, 'staging');
+  const productionSubject = emailSubject(subject, undefined);
+  console.log('ADMIN_EMAIL_SUBJECT_STAGING', stagingSubject);
+  console.log('ADMIN_EMAIL_SUBJECT', productionSubject);
+  assert.equal(subject, 'לקוח חדש: ישראל ישראלי – ת.ז 123456782');
+  assert.equal(stagingSubject, '[בדיקה] לקוח חדש: ישראל ישראלי – ת.ז 123456782');
+  assert.equal(productionSubject, 'לקוח חדש: ישראל ישראלי – ת.ז 123456782');
+  assert.equal(emailSubject('אישור הצטרפות – פרישה פרימיום', 'staging'), '[בדיקה] אישור הצטרפות – פרישה פרימיום');
 });
 
 test('email subjects stay plain unless APP_ENV is exactly staging', () => {
