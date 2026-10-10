@@ -13,6 +13,123 @@ let idExtractedData = null;
 let idFileData      = null; // { base64, mimeType, filename } — מסמך הזיהוי המאוחד לאדמין
 let lastPdfBase64   = null;
 let lastPdfFilename = null;
+let tabsReady       = false;
+
+// Keep ids and names in sync with JOIN_DOCUMENTS in server.js.
+// List order and pdfOrder: pension, insurance, har habituach, then client consent.
+const JOIN_DOCUMENTS = [
+  {
+    id: 'pension', tab: '1', panel: 'doc-panel-1', pdfOrder: 1,
+    name: 'ייפוי כח פנסיוני',
+    description: 'הרשאה לקבלת מידע על תוכניות פנסיוניות באמצעות המסלקה הפנסיונית. לקריאה בלבד, בלי פעולה בחשבונות.',
+  },
+  {
+    id: 'insurance', tab: '2', panel: 'doc-panel-2', pdfOrder: 2,
+    name: 'ייפוי כח ביטוח',
+    description: 'הרשאה לפנייה לחברות הביטוח לקבלת מידע על פוליסות ביטוח פרטיות.',
+  },
+  {
+    id: 'har', tab: '3', panel: 'doc-panel-3', pdfOrder: 3,
+    name: 'ייפוי כח להר הביטוח',
+    description: 'הרשאה לפנייה להר הביטוח לאיתור מוצרי הביטוח שברשותך.',
+  },
+  {
+    id: 'consent', tab: '0', panel: 'doc-panel-0', pdfOrder: 4,
+    name: 'הסכמת לקוח',
+    description: 'הסכמה לשימוש במידע ולקבלת דבר פרסומת, כדי שנוכל ליצור קשר ולהתאים עבורך מידע על שירותים.',
+  },
+];
+
+function selectedDocuments() {
+  return JOIN_DOCUMENTS.filter(doc => {
+    const box = document.getElementById(`doc-select-${doc.id}`);
+    return !!(box && box.checked);
+  });
+}
+
+function pdfPanelsForSelection(docs) {
+  return docs.slice().sort((a, b) => a.pdfOrder - b.pdfOrder).map(doc => doc.panel);
+}
+
+function joinHebrewNames(names) {
+  if (names.length <= 1) return names[0] || '';
+  if (names.length === 2) return `${names[0]} ו${names[1]}`;
+  return `${names.slice(0, -1).join(', ')} ו${names[names.length - 1]}`;
+}
+
+function applyDocumentSelection() {
+  const selected = selectedDocuments();
+  const selectedIds = new Set(selected.map(doc => doc.id));
+  let activeStillVisible = false;
+
+  JOIN_DOCUMENTS.forEach(doc => {
+    const on = selectedIds.has(doc.id);
+    const tab = document.querySelector(`.doc-tab[data-tab="${doc.tab}"]`);
+    const panel = document.getElementById(doc.panel);
+    if (tab) tab.classList.toggle('hidden', !on);
+    if (!panel) return;
+    if (!on) {
+      panel.classList.add('hidden');
+      panel.classList.remove('active');
+      return;
+    }
+    if (panel.classList.contains('active')) activeStillVisible = true;
+  });
+
+  if (selected.length && !activeStillVisible) {
+    document.querySelectorAll('.doc-tab').forEach(tab => tab.classList.remove('active'));
+    document.querySelectorAll('.doc-panel').forEach(panel => {
+      panel.classList.remove('active');
+      panel.classList.add('hidden');
+    });
+    const first = selected[0];
+    const tab = document.querySelector(`.doc-tab[data-tab="${first.tab}"]`);
+    const panel = document.getElementById(first.panel);
+    if (tab) tab.classList.add('active');
+    if (panel) {
+      panel.classList.remove('hidden');
+      panel.classList.add('active');
+    }
+  }
+
+  const tabs = document.querySelector('.doc-tabs');
+  if (tabs) tabs.classList.toggle('hidden', selected.length === 0);
+
+  const names = document.getElementById('sig-scope-names');
+  const error = document.getElementById('doc-picker-error');
+  if (names) names.textContent = selected.length ? joinHebrewNames(selected.map(doc => doc.name)) : '';
+  if (error) error.textContent = selected.length ? '' : 'יש לסמן לפחות מסמך אחד כדי להמשיך';
+  return selected;
+}
+
+function initDocumentPicker() {
+  const list = document.getElementById('doc-picker-list');
+  if (!list || list.childElementCount) return;
+  JOIN_DOCUMENTS.forEach(doc => {
+    const label = document.createElement('label');
+    label.className = 'doc-picker-item';
+    label.innerHTML = `
+      <input type="checkbox" id="doc-select-${doc.id}" checked />
+      <span>
+        <span class="doc-picker-name"></span>
+        <span class="doc-picker-desc"></span>
+      </span>`;
+    label.querySelector('.doc-picker-name').textContent = doc.name;
+    label.querySelector('.doc-picker-desc').textContent = doc.description;
+    label.querySelector('input').addEventListener('change', () => applyDocumentSelection());
+    list.appendChild(label);
+  });
+  applyDocumentSelection();
+}
+
+function fillSuccessDocuments() {
+  const names = selectedDocuments().map(doc => doc.name);
+  const el = document.getElementById('success-docs');
+  if (!el) return;
+  el.textContent = names.length === 1
+    ? `נחתם מסמך אחד: ${names[0]}`
+    : `נחתמו ${names.length} מסמכים: ${joinHebrewNames(names)}`;
+}
 
 // ── Helpers ───────────────────────────────────────────────
 function formatDate(iso) {
@@ -647,6 +764,8 @@ function setupLiveValidation() {
 
 // ── Tabs ──────────────────────────────────────────────────
 function initTabs() {
+  if (tabsReady) return;
+  tabsReady = true;
   document.querySelectorAll('.doc-tab').forEach(tab => {
     tab.addEventListener('click', () => {
       const idx = tab.dataset.tab;
@@ -658,8 +777,8 @@ function initTabs() {
       setTimeout(() => tab.classList.add('read'), 2000);
     });
   });
-  // first tab: mark as read after 2s
-  setTimeout(() => document.querySelector('.doc-tab[data-tab="0"]').classList.add('read'), 2000);
+  // the document shown first: mark as read after 2s
+  setTimeout(() => document.querySelector('.doc-tab.active')?.classList.add('read'), 2000);
 }
 
 // ── Signature Pad ─────────────────────────────────────────
@@ -762,28 +881,35 @@ async function captureDocPanel(panelId) {
   const origMax      = el.style.maxHeight;
   const origOverflow = el.style.overflow;
 
+  const notes = [...el.querySelectorAll('.doc-note')];
+  const noteDisplay = notes.map(note => note.style.display);
+
   el.classList.remove('hidden');   // הסר לפני הצילום — hidden כולל !important
   el.style.maxHeight = 'none';
   el.style.overflow  = 'visible';
   el.classList.add('active');
+  // הערות ההסבר מעל הטופס נשארות במסך, אבל לא נכנסות ל-PDF
+  notes.forEach(note => { note.style.display = 'none'; });
 
   await new Promise(r => setTimeout(r, 120));
 
-  const canvas = await html2canvas(el, {
-    scale: 2.5,
-    useCORS: true,
-    allowTaint: true,
-    backgroundColor: '#ffffff',
-    logging: false,
-    windowWidth: Math.max(el.scrollWidth + 2, 750),
-  });
-
-  el.style.maxHeight = origMax;
-  el.style.overflow  = origOverflow;
-  if (!wasActive) el.classList.remove('active');
-  if (wasHidden)  el.classList.add('hidden');    // שחזר מצב מקורי
-
-  return canvas;
+  try {
+    return await html2canvas(el, {
+      scale: 2.5,
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: '#ffffff',
+      logging: false,
+      windowWidth: Math.max(el.scrollWidth + 2, 750),
+      ignoreElements: (node) => !!(node.classList && node.classList.contains('doc-note')),
+    });
+  } finally {
+    notes.forEach((note, i) => { note.style.display = noteDisplay[i]; });
+    el.style.maxHeight = origMax;
+    el.style.overflow  = origOverflow;
+    if (!wasActive) el.classList.remove('active');
+    if (wasHidden)  el.classList.add('hidden');    // שחזר מצב מקורי
+  }
 }
 
 // ── Generate combined PDF ─────────────────────────────────
@@ -795,8 +921,12 @@ async function generatePDF(sigDataUrl) {
   const marg = 10;
   const imgW = pw - marg * 2;
 
-  // Inject signature into sig-placeholder elements for capture
-  const phs = document.querySelectorAll('.sig-placeholder');
+  // Sign only the documents the client left checked, in the existing PDF order.
+  const panels = pdfPanelsForSelection(selectedDocuments());
+  if (!panels.length) throw new Error('לא נבחרו מסמכים');
+  const phs = panels.flatMap(panelId => (
+    [...document.getElementById(panelId).querySelectorAll('.sig-placeholder')]
+  ));
   phs.forEach(ph => {
     const img = document.createElement('img');
     img.src = sigDataUrl;
@@ -806,8 +936,6 @@ async function generatePDF(sigDataUrl) {
   });
 
   await new Promise(r => setTimeout(r, 150));
-
-  const panels = ['doc-panel-1','doc-panel-2','doc-panel-3','doc-panel-0'];
   let isFirstPage = true;
 
   for (const panelId of panels) {
@@ -851,7 +979,14 @@ async function generatePDF(sigDataUrl) {
 async function handleSubmit() {
   const sigErr = document.getElementById('signature-error');
   const conErr = document.getElementById('consent-error');
+  const picked = applyDocumentSelection();
   let ok = true;
+
+  if (!picked.length) {
+    const picker = document.getElementById('doc-picker-error');
+    if (picker) picker.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    ok = false;
+  }
 
   if (!signaturePad || signaturePad.isEmpty()) {
     sigErr.textContent = 'יש לחתום לפני שליחה';
@@ -880,6 +1015,7 @@ async function handleSubmit() {
 
     setLoadingMsg('שולח אימייל אישור...');
 
+    formData.selectedDocumentIds = picked.map(doc => doc.id);
     const res    = await fetch('/api/submit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -888,13 +1024,13 @@ async function handleSubmit() {
     const result = await res.json();
     showLoading(false);
 
+    document.getElementById('success-name').textContent = `${formData.firstName} ${formData.lastName}`;
+    fillSuccessDocuments();
     if (result.success) {
-      document.getElementById('success-name').textContent = `${formData.firstName} ${formData.lastName}`;
       goToStep(3);
     } else {
       alert('שגיאה בשליחת האימייל:\n' + result.message + '\n\nהמסמכים הורדו בהצלחה למחשבך.');
       document.getElementById('tl-email').classList.remove('done');
-      document.getElementById('success-name').textContent = `${formData.firstName} ${formData.lastName}`;
       goToStep(3);
     }
   } catch (err) {
@@ -903,6 +1039,7 @@ async function handleSubmit() {
     alert('המסמכים הורדו בהצלחה.\nשגיאה בשליחת האימייל – ודא שהשרת פועל.');
     document.getElementById('tl-email').classList.remove('done');
     document.getElementById('success-name').textContent = `${formData.firstName} ${formData.lastName}`;
+    fillSuccessDocuments();
     goToStep(3);
   }
 }
@@ -939,7 +1076,7 @@ document.getElementById('personal-form').addEventListener('submit', e => {
   };
   populateDocuments(formData);
   goToStep(2);
-  setTimeout(() => { initSignaturePad(); initTabs(); }, 80);
+  setTimeout(() => { applyDocumentSelection(); initSignaturePad(); initTabs(); }, 80);
 });
 
 document.getElementById('back-btn').addEventListener('click',   () => goToStep(1));
@@ -957,4 +1094,5 @@ document.getElementById('download-pdf-btn').addEventListener('click', () => {
 // ── Init ──────────────────────────────────────────────────
 setupLiveValidation();
 document.querySelector('.progress-bar-wrapper').classList.add('hidden');
+initDocumentPicker();
 initStep0();

@@ -191,19 +191,26 @@
     <div class="step-card hidden" id="step-2">
       <div class="card-header">
         <h2>מסמכי הצטרפות – קריאה וחתימה</h2>
-        <p>עיינו בכל המסמכים ולאחר מכן חתמו בתחתית הדף</p>
+        <p>סמנו את המסמכים לחתימה, עיינו בהם וחתמו בתחתית הדף</p>
       </div>
+
+      <section class="doc-picker" aria-labelledby="doc-picker-title">
+        <h3 id="doc-picker-title">אילו מסמכים לחתום?</h3>
+        <p class="doc-picker-lead">כל המסמכים מסומנים. אפשר לבטל סימון של מסמך שלא רוצים לחתום עליו. חתימה אחת חלה על המסמכים שנשארו מסומנים.</p>
+        <div id="doc-picker-list" class="doc-picker-list"></div>
+        <span class="field-error" id="doc-picker-error" role="alert"></span>
+      </section>
 
       <!-- Document tabs -->
       <div class="doc-tabs">
-        <button class="doc-tab active" data-tab="0">הסכמת לקוח</button>
-        <button class="doc-tab" data-tab="1">ייפוי כח פנסיוני</button>
+        <button class="doc-tab active" data-tab="1">ייפוי כח פנסיוני</button>
         <button class="doc-tab" data-tab="2">ייפוי כח ביטוח</button>
         <button class="doc-tab" data-tab="3">ייפוי כח להר הביטוח</button>
+        <button class="doc-tab" data-tab="0">הסכמת לקוח</button>
       </div>
 
       <!-- ── Document 1: הסכמת לקוח ── -->
-      <div class="doc-panel active" id="doc-panel-0">
+      <div class="doc-panel hidden" id="doc-panel-0">
         <div class="pdf-doc" id="doc-0-content">
           <div style="text-align:center; margin-bottom:14px;">
             <img src="logo.png" alt="פרישה פרימיום" style="height:60px; width:auto; object-fit:contain; display:block; margin:0 auto 12px;" />
@@ -241,7 +248,7 @@
       </div>
 
       <!-- ── Document 2: ייפוי כח פנסיוני ── -->
-      <div class="doc-panel hidden" id="doc-panel-1">
+      <div class="doc-panel active" id="doc-panel-1">
         <div class="doc-note">ייפוי כח זה משמש לקבלת מידע על תוכניות פנסיוניות באמצעות המסלקה הפנסיונית.</div>
         <div class="pdf-doc pdf-doc-compact" id="doc-1-content">
 
@@ -519,10 +526,11 @@
         <div class="sig-area-header">
           <div class="sig-area-title">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-            חתימה דיגיטלית – חלה על כל המסמכים לעיל
+            <span id="sig-scope-title">חתימה דיגיטלית – חלה על המסמכים שסומנו</span>
           </div>
           <button type="button" id="clear-btn" class="btn btn-ghost btn-small">נקה חתימה</button>
         </div>
+        <p class="sig-scope-names" id="sig-scope-names"></p>
         <div class="canvas-wrapper" id="canvas-wrapper">
           <canvas id="signature-canvas"></canvas>
           <div class="canvas-hint" id="canvas-hint">חתמו כאן באצבע או בעכבר</div>
@@ -531,7 +539,7 @@
 
         <label class="consent-check">
           <input type="checkbox" id="consent-checkbox" />
-          <span>קראתי את כל המסמכים לעיל, הבנתי את תוכנם ואני מסכים/ה לתנאיהם</span>
+          <span>קראתי את המסמכים שסומנו, הבנתי את תוכנם ואני מסכים/ה לתנאיהם</span>
         </label>
         <span class="field-error" id="consent-error"></span>
       </div>
@@ -563,7 +571,7 @@
         <div class="status-timeline">
           <div class="timeline-item done">
             <div class="tl-icon">✓</div>
-            <div class="tl-text"><strong>כל המסמכים נחתמו ואושרו</strong><span>4 טפסים הצטרפות הושלמו בהצלחה</span></div>
+            <div class="tl-text"><strong>המסמכים שנבחרו נחתמו ואושרו</strong><span id="success-docs">המסמכים שסומנו הושלמו בהצלחה</span></div>
           </div>
           <div class="timeline-item done" id="tl-email">
             <div class="tl-icon">✓</div>

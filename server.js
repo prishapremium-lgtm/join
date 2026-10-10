@@ -43,6 +43,43 @@ const ROETO_CLIENT_ID = process.env.ROETO_CLIENT_ID || CFG.roeto_client_id || ''
 const ROETO_CLIENT_SECRET = process.env.ROETO_CLIENT_SECRET || CFG.roeto_client_secret || '';
 const INTEGRATION_TIMEOUT_MS = 20000;
 
+// Staging is opt-in. An unset APP_ENV (production) must not change
+// subjects, HTML, or response headers.
+const STAGING_ROBOTS = 'noindex, nofollow';
+
+function isStagingEnv(appEnv = process.env.APP_ENV) {
+  return appEnv === 'staging';
+}
+
+function emailSubject(subject, appEnv = process.env.APP_ENV) {
+  return isStagingEnv(appEnv) ? `[בדיקה] ${subject}` : subject;
+}
+
+function adminNewClientSubject(client = {}) {
+  const first = client.firstName || '';
+  const last = client.lastName || '';
+  const id = client.idNumber || '';
+  return `לקוח חדש: ${first} ${last} – ת.ז ${id}`;
+}
+
+function applyStagingDocument(html, appEnv = process.env.APP_ENV) {
+  if (!isStagingEnv(appEnv)) return html;
+  let out = html;
+  if (!/name=["']robots["']/i.test(out)) {
+    out = out.replace(
+      /<head(\s[^>]*)?>/i,
+      (match) => `${match}\n  <meta name="robots" content="${STAGING_ROBOTS}" />`,
+    );
+  }
+  if (!out.includes('class="env-banner"')) {
+    out = out.replace(
+      '<header class="app-header">',
+      '<header class="app-header">\n    <div class="env-banner" role="status">סביבת בדיקה</div>',
+    );
+  }
+  return out;
+}
+
 // ── Mailer via Resend HTTPS API ──────────────────────────
 // Railway blocks outbound Gmail SMTP; Resend works over HTTPS.
 // Custom domain not verified yet — send from onboarding@resend.dev.
@@ -100,7 +137,68 @@ function resendSend({ to, subject, html, attachments = [] }) {
   });
 }
 
-async function sendEmails(client, pdfBuffer, idFile) {
+// Keep ids and names in sync with JOIN_DOCUMENTS in public/app.js.
+const JOIN_DOCUMENTS = [
+  { id: 'pension',   name: 'ייפוי כח פנסיוני' },
+  { id: 'insurance', name: 'ייפוי כח ביטוח' },
+  { id: 'har',       name: 'ייפוי כח להר הביטוח' },
+  { id: 'consent',   name: 'הסכמת לקוח' },
+];
+
+function resolveDocumentSelection(selectedIds) {
+  const explicit = selectedIds !== undefined && selectedIds !== null;
+  if (!explicit) {
+    return { selected: JOIN_DOCUMENTS.slice(), deselected: [], explicit: false };
+  }
+  const wanted = new Set();
+  if (Array.isArray(selectedIds)) {
+    for (const raw of selectedIds) {
+      const id = String(raw || '').trim();
+      if (JOIN_DOCUMENTS.some(doc => doc.id === id)) wanted.add(id);
+    }
+  }
+  return {
+    selected:   JOIN_DOCUMENTS.filter(doc => wanted.has(doc.id)),
+    deselected: JOIN_DOCUMENTS.filter(doc => !wanted.has(doc.id)),
+    explicit:   true,
+  };
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (ch) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[ch]));
+}
+
+function documentNamesHtml(docs) {
+  if (!docs.length) return '<p style="margin:0;color:#666;">אין</p>';
+  const items = docs.map(doc => `<li style="margin:0 0 4px;">${escapeHtml(doc.name)}</li>`).join('');
+  return `<ul style="margin:0;padding:0 18px 0 0;">${items}</ul>`;
+}
+
+function renderDocumentSelectionHtml(selection, audience) {
+  const selected = documentNamesHtml(selection.selected);
+  const box = 'background:#f7eef0;border-right:4px solid #8a2a36;padding:15px;margin:20px 0;border-radius:4px;';
+  if (audience === 'client') {
+    return `
+      <div style="${box}">
+        <p style="margin:0 0 8px;font-weight:bold;">המסמכים החתומים המצורפים</p>
+        ${selected}
+      </div>`;
+  }
+  const deselected = selection.deselected.length
+    ? documentNamesHtml(selection.deselected)
+    : '<p style="margin:0;color:#666;">הלקוח חתם על כל המסמכים.</p>';
+  return `
+    <div style="${box}">
+      <p style="margin:0 0 8px;font-weight:bold;">מסמכים שנחתמו</p>
+      ${selected}
+      <p style="margin:12px 0 8px;font-weight:bold;">מסמכים שלא סומנו</p>
+      ${deselected}
+    </div>`;
+}
+
+async function sendEmails(client, pdfBuffer, idFile, selection = resolveDocumentSelection(client && client.selectedDocumentIds)) {
   const first   = client.firstName || '';
   const last    = client.lastName  || '';
   const email   = client.email     || '';
@@ -108,7 +206,7 @@ async function sendEmails(client, pdfBuffer, idFile) {
 
   const clientHtml = `
 <div dir="rtl" style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
-  <div style="background:linear-gradient(135deg,#1a1a2e,#0f3460);color:white;padding:30px;text-align:center;border-radius:8px 8px 0 0;">
+  <div style="background:linear-gradient(135deg,#6c1822,#8a2a36);color:white;padding:30px;text-align:center;border-radius:8px 8px 0 0;">
     <h1 style="margin:0;font-size:24px;">${COMPANY}</h1>
     <p style="margin:8px 0 0;opacity:.8;">אישור הצטרפות</p>
   </div>
@@ -116,7 +214,8 @@ async function sendEmails(client, pdfBuffer, idFile) {
     <p style="font-size:16px;">שלום <strong>${first} ${last}</strong>,</p>
     <p>תודה על הצטרפותך ל${COMPANY}! אנחנו שמחים לקבל אותך.</p>
     <p>טופס ההצטרפות החתום מצורף לאימייל זה כקובץ PDF.</p>
-    <div style="background:#f0f7ff;border-right:4px solid #0f3460;padding:15px;margin:20px 0;border-radius:4px;">
+    ${renderDocumentSelectionHtml(selection, 'client')}
+    <div style="background:#f7eef0;border-right:4px solid #8a2a36;padding:15px;margin:20px 0;border-radius:4px;">
       <p style="margin:0;font-weight:bold;">מה קורה עכשיו?</p>
       <p style="margin:8px 0 0;">אנו פונים כעת לגופים הרלוונטיים (קרנות פנסיה, קופות גמל ועוד) לקבלת המידע המלא אודות חסכונותיך ונכסיך. נחזור אליך עם תמונה מלאה בהקדם האפשרי.</p>
     </div>
@@ -141,12 +240,13 @@ async function sendEmails(client, pdfBuffer, idFile) {
 
   const adminHtml = `
 <div dir="rtl" style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
-  <div style="background:#1a1a2e;color:white;padding:20px;text-align:center;border-radius:8px 8px 0 0;">
+  <div style="background:#6c1822;color:white;padding:20px;text-align:center;border-radius:8px 8px 0 0;">
     <h2 style="margin:0;">לקוח חדש הצטרף!</h2>
   </div>
   <div style="background:#fff;padding:25px;border:1px solid #eee;border-radius:0 0 8px 8px;">
     <table style="width:100%;border-collapse:collapse;">${rowsHtml}</table>
     <p style="margin-top:20px;color:#666;font-size:13px;">טופס ההצטרפות החתום מצורף.</p>
+    ${renderDocumentSelectionHtml(selection, 'admin')}
   </div>
 </div>`;
 
@@ -160,7 +260,7 @@ async function sendEmails(client, pdfBuffer, idFile) {
   if (email) {
     promises.push(resendSend({
       to:          email,
-      subject:     `אישור הצטרפות – ${COMPANY}`,
+      subject:     emailSubject(`אישור הצטרפות – ${COMPANY}`),
       html:        clientHtml,
       attachments: [pdfAttachment],
     }));
@@ -177,7 +277,7 @@ async function sendEmails(client, pdfBuffer, idFile) {
     }
     promises.push(resendSend({
       to:          adminTo,
-      subject:     `לקוח חדש: ${first} ${last}`,
+      subject:     emailSubject(adminNewClientSubject(client)),
       html:        adminHtml,
       attachments: adminAttachments,
     }));
@@ -485,13 +585,9 @@ function sniffImageMediaType(b64) {
 }
 
 // ── Make Webhook (fail-soft) ──────────────────────────────
-async function sendToMake(client, pdfBase64, pdfFilename) {
-  if (!MAKE_WEBHOOK) {
-    console.log('[Make] skipped – MAKE_WEBHOOK_URL לא הוגדר');
-    return { skipped: true };
-  }
-
-  const payload = {
+function buildMakePayload(client, pdfBase64, pdfFilename, selection = resolveDocumentSelection(client && client.selectedDocumentIds), submittedAt = new Date().toISOString()) {
+  const chosen = selection || resolveDocumentSelection(undefined);
+  return {
     source:      'join',
     company:     COMPANY,
     firstName:   client.firstName   || '',
@@ -510,10 +606,21 @@ async function sendToMake(client, pdfBase64, pdfFilename) {
     city:        client.city        || '',
     zip:         client.zip         || '',
     gender:      client.gender      || '',
+    selectedDocuments:   chosen.selected.map(doc => ({ id: doc.id, name: doc.name })),
+    deselectedDocuments: chosen.deselected.map(doc => ({ id: doc.id, name: doc.name })),
     pdfBase64,
     pdfFilename,
-    submittedAt: new Date().toISOString(),
+    submittedAt,
   };
+}
+
+async function sendToMake(client, pdfBase64, pdfFilename, selection) {
+  if (!MAKE_WEBHOOK) {
+    console.log('[Make] skipped – MAKE_WEBHOOK_URL לא הוגדר');
+    return { skipped: true };
+  }
+
+  const payload = buildMakePayload(client, pdfBase64, pdfFilename, selection);
 
   try {
     const res = await httpsJson({ url: MAKE_WEBHOOK, method: 'POST', body: payload });
@@ -738,6 +845,23 @@ app.use((req, res, next) => {
   res.setHeader('Cache-Control', 'no-store');
   next();
 });
+
+function sendIndex(_req, res, next) {
+  fs.readFile(path.join(__dirname, 'public', 'index.html'), 'utf8', (err, html) => {
+    if (err) return next(err);
+    res.type('html').send(applyStagingDocument(html));
+  });
+}
+
+if (isStagingEnv()) {
+  app.use((req, res, next) => {
+    res.setHeader('X-Robots-Tag', STAGING_ROBOTS);
+    next();
+  });
+  app.get('/', sendIndex);
+  app.get('/index.html', sendIndex);
+}
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.post('/api/extract-id', async (req, res) => {
@@ -764,13 +888,21 @@ app.post('/api/submit', async (req, res) => {
   if (!client.firstName) return res.status(400).json({ success: false, message: 'נתונים חסרים' });
   if (!pdfBase64)        return res.status(400).json({ success: false, message: 'קובץ PDF חסר' });
 
+  const selection = resolveDocumentSelection(
+    Object.prototype.hasOwnProperty.call(client, 'selectedDocumentIds') ? client.selectedDocumentIds : undefined,
+  );
+  if (selection.explicit && !selection.selected.length) {
+    return res.status(400).json({ success: false, message: 'יש לסמן לפחות מסמך אחד לחתימה' });
+  }
+
   try {
     const pdfBuffer  = Buffer.from(pdfBase64, 'base64');
     const pdfFilename = `הצטרפות-${client.firstName || ''}-${client.lastName || ''}.pdf`;
-    await sendEmails(client, pdfBuffer, idFile);
-    // Make + Roeto: fail-soft — email success is enough for the user response
+    await sendEmails(client, pdfBuffer, idFile, selection);
+    // Make + Roeto: fail-soft — email success is enough for the user response.
+    // Roeto still receives only the client record, not the document choice.
     Promise.allSettled([
-      sendToMake(client, pdfBase64, pdfFilename),
+      sendToMake(client, pdfBase64, pdfFilename, selection),
       sendToRoeto(client),
     ]).then((results) => {
       console.log('[integrations] Make:', results[0].status, results[0].value || results[0].reason);
@@ -808,6 +940,7 @@ if (require.main === module) {
     console.log(`  Server: ${COMPANY}`);
     console.log('====================================================');
     console.log(`  Port:  ${PORT}`);
+    console.log(`  Env:   ${isStagingEnv() ? 'staging' : 'production'}`);
     console.log(`  Admin: ${adminRecipients().join(', ')}`);
     console.log(`  URL:   http://localhost:${PORT}`);
     console.log('');
@@ -822,4 +955,12 @@ module.exports = {
   normalizeExtracted,
   resolveRoetoAddress,
   collectIdImages,
+  isStagingEnv,
+  emailSubject,
+  adminNewClientSubject,
+  applyStagingDocument,
+  JOIN_DOCUMENTS,
+  resolveDocumentSelection,
+  renderDocumentSelectionHtml,
+  buildMakePayload,
 };
