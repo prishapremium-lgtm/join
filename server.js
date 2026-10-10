@@ -139,10 +139,10 @@ function resendSend({ to, subject, html, attachments = [] }) {
 
 // Keep ids and names in sync with JOIN_DOCUMENTS in public/app.js.
 const JOIN_DOCUMENTS = [
-  { id: 'consent',   name: 'הסכמת לקוח' },
   { id: 'pension',   name: 'ייפוי כח פנסיוני' },
   { id: 'insurance', name: 'ייפוי כח ביטוח' },
   { id: 'har',       name: 'ייפוי כח להר הביטוח' },
+  { id: 'consent',   name: 'הסכמת לקוח' },
 ];
 
 function resolveDocumentSelection(selectedIds) {

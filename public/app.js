@@ -16,13 +16,8 @@ let lastPdfFilename = null;
 let tabsReady       = false;
 
 // Keep ids and names in sync with JOIN_DOCUMENTS in server.js.
-// pdfOrder is the existing capture order: pension, insurance, har habituach, consent.
+// List order and pdfOrder: pension, insurance, har habituach, then client consent.
 const JOIN_DOCUMENTS = [
-  {
-    id: 'consent', tab: '0', panel: 'doc-panel-0', pdfOrder: 4,
-    name: 'הסכמת לקוח',
-    description: 'הסכמה לשימוש במידע ולקבלת דבר פרסומת, כדי שנוכל ליצור קשר ולהתאים עבורך מידע על שירותים.',
-  },
   {
     id: 'pension', tab: '1', panel: 'doc-panel-1', pdfOrder: 1,
     name: 'ייפוי כח פנסיוני',
@@ -37,6 +32,11 @@ const JOIN_DOCUMENTS = [
     id: 'har', tab: '3', panel: 'doc-panel-3', pdfOrder: 3,
     name: 'ייפוי כח להר הביטוח',
     description: 'הרשאה לפנייה להר הביטוח לאיתור מוצרי הביטוח שברשותך.',
+  },
+  {
+    id: 'consent', tab: '0', panel: 'doc-panel-0', pdfOrder: 4,
+    name: 'הסכמת לקוח',
+    description: 'הסכמה לשימוש במידע ולקבלת דבר פרסומת, כדי שנוכל ליצור קשר ולהתאים עבורך מידע על שירותים.',
   },
 ];
 
@@ -777,8 +777,8 @@ function initTabs() {
       setTimeout(() => tab.classList.add('read'), 2000);
     });
   });
-  // first tab: mark as read after 2s
-  setTimeout(() => document.querySelector('.doc-tab[data-tab="0"]').classList.add('read'), 2000);
+  // the document shown first: mark as read after 2s
+  setTimeout(() => document.querySelector('.doc-tab.active')?.classList.add('read'), 2000);
 }
 
 // ── Signature Pad ─────────────────────────────────────────

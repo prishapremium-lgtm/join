@@ -238,12 +238,12 @@ test('production index has no staging banner and no robots header', async () => 
 
 test('document selection keeps every document unless the client removes some', () => {
   const all = resolveDocumentSelection(undefined);
-  assert.deepEqual(all.selected.map(doc => doc.id), ['consent', 'pension', 'insurance', 'har']);
+  assert.deepEqual(all.selected.map(doc => doc.id), ['pension', 'insurance', 'har', 'consent']);
   assert.deepEqual(all.deselected, []);
   assert.equal(all.explicit, false);
 
   const some = resolveDocumentSelection(['insurance', 'consent', 'insurance', 'unknown']);
-  assert.deepEqual(some.selected.map(doc => doc.name), ['הסכמת לקוח', 'ייפוי כח ביטוח']);
+  assert.deepEqual(some.selected.map(doc => doc.name), ['ייפוי כח ביטוח', 'הסכמת לקוח']);
   assert.deepEqual(some.deselected.map(doc => doc.id), ['pension', 'har']);
   assert.equal(some.explicit, true);
 
@@ -279,7 +279,7 @@ test('admin email and Make payload list signed and unsigned documents', () => {
     { id: 'pension', name: 'ייפוי כח פנסיוני' },
     { id: 'har', name: 'ייפוי כח להר הביטוח' },
   ]);
-  assert.deepEqual(payload.deselectedDocuments.map(doc => doc.id), ['consent', 'insurance']);
+  assert.deepEqual(payload.deselectedDocuments.map(doc => doc.id), ['insurance', 'consent']);
   assert.equal(payload.pdfBase64, 'PDFDATA');
   assert.equal(payload.birthDay, '15-05-1980');
   assert.equal(payload.submittedAt, '2026-10-09T00:00:00.000Z');
